@@ -39,26 +39,31 @@ def fetch_news(tickers: list[str], hours: int = 24) -> pd.DataFrame:
             request = NewsRequest(symbols=ticker, start=start, end=end, limit=50)
             response = client.get_news(request)
 
-            # N-02: alpaca-py devuelve .news como lista plana, no indexada por ticker
-            articles = response.news if hasattr(response, "news") else []
+            raw = dict(response)
+            articles = raw.get("data", {}).get("news", [])
 
+            count = 0
             for article in articles:
-                # Filtrar solo artículos que mencionan este ticker
                 article_symbols = [s.upper() for s in (article.symbols or [])]
                 if ticker.upper() not in article_symbols:
                     continue
 
+                created = article.created_at
+                if hasattr(created, "isoformat"):
+                    created = created.isoformat()
+
                 all_news.append({
                     "ticker": ticker,
-                    "published_at": article.created_at.isoformat() if article.created_at else None,
-                    "title": article.headline,
+                    "published_at": created,
+                    "title": article.headline or "",
                     "summary": article.summary or "",
                     "url": article.url or "",
                     "source": article.source or "alpaca",
                     "fetched_at": datetime.now(timezone.utc).isoformat(),
                 })
+                count += 1
 
-            log.info(f"  {ticker}: {len([a for a in articles if ticker.upper() in [s.upper() for s in (a.symbols or [])]])} noticias")
+            log.info(f"  {ticker}: {count} noticias")
 
         except Exception as e:
             log.error(f"  Error descargando noticias de {ticker}: {e}")
@@ -68,8 +73,14 @@ def fetch_news(tickers: list[str], hours: int = 24) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
-        sb.table("raw_news_rt").upsert(all_news, on_conflict="url").execute()
-        log.info(f"  {len(all_news)} noticias guardadas en raw_news_rt")
+        seen_urls = set()
+        unique_news = []
+        for n in all_news:
+            if n["url"] not in seen_urls:
+                seen_urls.add(n["url"])
+                unique_news.append(n)
+        sb.table("raw_news_rt").upsert(unique_news, on_conflict="url").execute()
+        log.info(f"  {len(unique_news)} noticias guardadas en raw_news_rt")
     except Exception as e:
         log.error(f"  Error guardando noticias: {e}")
 
