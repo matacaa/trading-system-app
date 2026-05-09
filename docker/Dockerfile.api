@@ -1,0 +1,29 @@
+# ─── API Gateway ───────────────────────────────────────────
+# FastAPI + 9 routers. Puerto 8000.
+#
+# Build:
+#   docker build -t squawks-api -f docker/Dockerfile.api .
+# Run:
+#   docker run -p 8000:8000 --env-file .env squawks-api
+# ───────────────────────────────────────────────────────────
+
+FROM squawks-base:latest
+
+WORKDIR /app
+
+# Copiar código necesario (orden: menos volátil → más volátil)
+COPY shared/ ./shared/
+COPY config/ ./config/
+COPY services/api/ ./services/api/
+COPY services/__init__.py ./services/__init__.py
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "services.api.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "2", \
+     "--log-level", "info"]

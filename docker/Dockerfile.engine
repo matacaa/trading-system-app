@@ -1,0 +1,28 @@
+# ─── Trading Engine ────────────────────────────────────────
+# Pipeline live: inference → guardrails → ejecución Alpaca.
+# Corre 24/7 con scheduler cada 1 min en horario de mercado.
+#
+# Build:
+#   docker build -t squawks-engine -f docker/Dockerfile.engine .
+# Run:
+#   docker run --env-file .env squawks-engine
+# ───────────────────────────────────────────────────────────
+
+FROM squawks-base:latest
+
+WORKDIR /app
+
+# Copiar código necesario
+COPY shared/ ./shared/
+COPY config/ ./config/
+COPY apps/__init__.py ./apps/__init__.py
+COPY apps/trading_engine/ ./apps/trading_engine/
+
+# Directorio para modelos .pkl/.pt descargados en runtime
+RUN mkdir -p /app/data/models
+
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import apps.trading_engine.main" || exit 1
+
+CMD ["python", "-m", "apps.trading_engine.main", \
+     "--config", "config/live/ensemble.yaml"]

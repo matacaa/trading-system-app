@@ -1,0 +1,47 @@
+# ─── Git ───────────────────────────────────────────────────
+.git
+.gitignore
+
+# ─── Python ────────────────────────────────────────────────
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+dist
+build
+*.egg
+
+# ─── Entorno ───────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+
+# ─── IDE ───────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ─── Datos pesados ─────────────────────────────────────────
+data/models/*.pt
+data/models/*.pkl
+data/models/*.bin
+data/raw/
+data/processed/
+*.csv
+*.parquet
+
+# ─── Docs y tests (no necesarios en imagen) ────────────────
+docs/
+tests/
+notebooks/
+*.md
+!README.md
+
+# ─── Docker (evitar recursión) ─────────────────────────────
+docker-compose*.yml
+Dockerfile*

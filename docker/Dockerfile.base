@@ -1,0 +1,41 @@
+# ─── Base image ────────────────────────────────────────────
+# Imagen compartida con TODAS las dependencias pesadas.
+# Los Dockerfiles de servicio heredan de aquí (FROM base).
+# Rebuild solo cuando cambie pyproject.toml o requirements.txt.
+#
+# Build:
+#   docker build -t squawks-base -f docker/Dockerfile.base .
+# ───────────────────────────────────────────────────────────
+
+FROM python:3.11-slim AS base
+
+# Evitar prompts interactivos + locale
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Deps de sistema para compilar wheels (numpy, scipy, lightgbm, etc.)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        libgomp1 \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 1. Copiar solo requirements → layer cacheada si no cambian deps
+COPY pyproject.toml requirements.txt ./
+
+# 2. Instalar todas las dependencias Python
+#    - torch CPU-only para reducir imagen de ~2GB a ~400MB
+#    - transformers para FinBERT
+#    - sklearn, xgboost, lightgbm para modelos tabulares
+RUN pip install \
+        torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install -r requirements.txt
+
+# 3. PYTHONPATH para que shared/, apps/, services/ sean importables
+ENV PYTHONPATH=/app
