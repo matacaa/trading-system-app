@@ -33,9 +33,13 @@ COPY pyproject.toml requirements.txt ./
 #    - torch CPU-only para reducir imagen de ~2GB a ~400MB
 #    - transformers para FinBERT
 #    - sklearn, xgboost, lightgbm para modelos tabulares
-RUN pip install \
-        torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip install -r requirements.txt
+#    - xgboost sin nvidia-nccl (no necesitamos GPU, ahorra 300MB)
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+RUN pip install xgboost --no-deps && \
+    pip install numpy scipy scikit-learn
+
+RUN pip install -r requirements.txt
 
 # 3. PYTHONPATH para que shared/, apps/, services/ sean importables
 ENV PYTHONPATH=/app
