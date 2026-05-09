@@ -20,6 +20,7 @@ import logging
 import time
 
 from shared.utils.logging import setup_logging
+from shared.symbols import ALL_SYMBOLS
 from apps.ingestion_live.alpaca_prices import fetch_prices
 from apps.ingestion_live.alpaca_news import fetch_news
 from apps.ingestion_live.finbert_rt import get_sentiment
@@ -30,7 +31,7 @@ log = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(description="Live Ingestion Pipeline")
-    parser.add_argument("--tickers", nargs="+", default=["AAPL"], help="Tickers")
+    parser.add_argument("--tickers", nargs="+", default=list(ALL_SYMBOLS.keys()), help="Tickers")
     parser.add_argument("--timeframe", default="1m", help="Timeframe")
     parser.add_argument("--skip-news", action="store_true", help="Omitir noticias y sentiment")
     args = parser.parse_args()

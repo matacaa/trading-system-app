@@ -1,0 +1,106 @@
+# ─── Docker Compose — Desarrollo Local ─────────────────────
+#
+# PRIMER USO (solo una vez):
+#   docker build -t squawks-base -f docker/Dockerfile.base .
+#
+# ARRANCAR TODO:
+#   docker-compose -f docker-compose.dev.yml up --build
+#
+# PARAR TODO:
+#   docker-compose -f docker-compose.dev.yml down
+#
+# VER LOGS:
+#   docker-compose -f docker-compose.dev.yml logs -f api
+# ────────────────────────────────────────────────────────────
+
+services:
+
+  # ─── API Gateway ─────────────────────────────────────────
+  # FastAPI + 9 routers. Puerto 8000.
+  # Hot-reload activado: cambias código → se recarga solo.
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: squawks-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./shared:/app/shared
+      - ./services:/app/services
+      - ./config:/app/config
+    env_file: .env
+    command: >
+      uvicorn services.api.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/shared
+      --reload-dir /app/services
+      --log-level info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - squawks-net
+
+  # ─── Trading Engine ─────────────────────────────────────
+  # Pipeline live: inference → guardrails → ejecución Alpaca.
+  # Corre 24/7 con scheduler cada 1 min en horario de mercado.
+  engine:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.engine
+    container_name: squawks-engine
+    volumes:
+      - ./shared:/app/shared
+      - ./apps/trading_engine:/app/apps/trading_engine
+      - ./config:/app/config
+      - ./data/models:/app/data/models
+    env_file: .env
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import apps.trading_engine.main"]
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - squawks-net
+
+  # ─── Ingestion Live ─────────────────────────────────────
+  # Alpaca prices + news + FinBERT + silver indicators.
+  # FinBERT tarda ~100s la primera vez, luego queda en memoria.
+  ingestion:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ingestion
+    container_name: squawks-ingestion
+    volumes:
+      - ./shared:/app/shared
+      - ./apps/ingestion_live:/app/apps/ingestion_live
+      - ./config:/app/config
+    env_file: .env
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import apps.ingestion_live.main"]
+      interval: 60s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - squawks-net
+
+networks:
+  squawks-net:
+    driver: bridge

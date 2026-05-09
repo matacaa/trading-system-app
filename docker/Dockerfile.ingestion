@@ -29,5 +29,7 @@ print('FinBERT cached OK')"
 HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
     CMD python -c "import apps.ingestion_live.main" || exit 1
 
-CMD ["python", "-m", "apps.ingestion_live.main", \
-     "--tickers", "AAPL"]
+# Los tickers se controlan desde docker-compose o variable de entorno.
+# Sin --tickers, el main.py usa AAPL como default para testing rápido.
+# En docker-compose.dev.yml se sobreescribe con los 16 tickers.
+CMD ["python", "-m", "apps.ingestion_live.main"]
