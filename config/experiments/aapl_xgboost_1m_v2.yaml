@@ -1,0 +1,45 @@
+experiment:
+  name: "aapl_xgboost_1m_v1"
+  task: "classification"
+
+model:
+  name: "xgboost"
+  params:
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.1
+
+data:
+  tickers: ["AAPL"]
+  # context_tickers: features de otros tickers como columnas extra
+  # Se añaden automáticamente al entrenamiento con prefijo {ticker}_
+  # Ejemplo: context_tickers: ["GLD", "MSFT"] añade GLD_rsi_14, MSFT_returns_5, etc.
+  context_tickers: []
+  tables: ["silver_features_1m"]
+  columns:
+    - ema_9
+    - ema_12
+    - ema_21
+    - rsi_14
+    - macd_line
+    - macd_signal
+    - bb_pct
+    - bb_width
+    - vwap
+    - atr_14
+    - returns_5
+    - volume_norm
+  target: "returns"
+  target_threshold: 0
+  train_start: "2026-04-10"
+  train_end: "2026-04-15"
+  test_start: "2026-04-16"
+  test_end: "2026-04-17"
+  dropna: true
+  normalize: true
+
+output:
+  save_model: true
+  save_predictions: true
+  save_metrics: true
+  metrics: ["accuracy", "f1", "precision", "recall", "roc_auc"]

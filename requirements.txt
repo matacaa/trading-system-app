@@ -1,0 +1,22 @@
+# Auto-generated from pyproject.toml — use `pip install -e .` preferably.
+# This file exists for compatibility with tools that expect requirements.txt.
+python-dotenv>=1.0.0
+pyyaml>=6.0
+pydantic>=2.5
+numpy>=1.26,<2.0
+pandas>=2.2
+scipy>=1.12
+supabase>=2.3
+requests>=2.31
+httpx>=0.25
+alpaca-py>=0.20
+scikit-learn>=1.4
+xgboost>=2.0
+lightgbm>=4.1
+torch>=2.1
+transformers>=4.36
+exchange-calendars>=4.5
+pytz>=2024.1
+APScheduler>=3.10
+rich>=13.7
+tqdm>=4.66

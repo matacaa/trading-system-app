@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trading-system"
+version = "0.1.0"
+description = "Sistema de trading algorítmico con ML — monorepo"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+authors = [{name = "Javier"}]
+
+dependencies = [
+    # ─── Core ──────────────────────────────────────
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.5",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+
+    # ─── Data ──────────────────────────────────────
+    "numpy>=1.26,<2.0",
+    "pandas>=2.2",
+    "scipy>=1.12",
+
+    # ─── Supabase / HTTP ──────────────────────────
+    "supabase>=2.3",
+    "requests>=2.31",
+    "httpx>=0.25",
+
+    # ─── Broker ────────────────────────────────────
+    "alpaca-py>=0.20",
+
+    # ─── ML tabulares ──────────────────────────────
+    "scikit-learn>=1.4",
+    "xgboost>=2.0",
+    "lightgbm>=4.1",
+
+    # ─── ML PyTorch ────────────────────────────────
+    "torch>=2.1",
+    "transformers>=4.36",
+
+    # ─── Mercado / indicadores ─────────────────────
+    "exchange-calendars>=4.5",
+    "pytz>=2024.1",
+
+    # ─── Scheduling ────────────────────────────────
+    "APScheduler>=3.10",
+
+    # ─── Utils ─────────────────────────────────────
+    "rich>=13.7",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.2",
+    "mypy>=1.8",
+]
+
+dashboard = [
+    "streamlit>=1.30",
+    "plotly>=5.18",
+    "streamlit-aggrid>=0.3",
+]
+
+notebooks = [
+    "ipython>=8.20",
+    "jupyter>=1.0",
+]
+
+yfinance = [
+    "yfinance>=0.2.36",
+]
+
+[tool.setuptools.packages.find]
+include = ["shared*", "apps*"]
+exclude = ["tests*", "data*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

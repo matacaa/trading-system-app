@@ -1,0 +1,73 @@
+capital:
+  cierre_fin_dia: true
+  inicial: 100000
+  posicion_max_pct: 10
+  stop_loss_pct: 5
+  take_profit_pct: 10
+data:
+  context_tickers: []
+  tickers:
+  - AAPL
+  timeframe: 1m
+guardrails:
+  atr_volatilidad:
+    activo: false
+    max_atr_pct: 2
+  bollinger:
+    activo: false
+    compra_max: 0.95
+  circuit_breaker:
+    activo: false
+  ema_tendencia:
+    activo: false
+  horario_mercado:
+    activo: true
+  macd:
+    activo: false
+  max_posiciones:
+    activo: false
+    valor: 3
+  ordenes_diarias_max:
+    activo: false
+    valor: 5
+  posicion_abierta:
+    activo: true
+  rsi:
+    activo: false
+    compra_max: 70
+    venta_min: 30
+  score_minimo:
+    activo: false
+    valor: 65
+  score_threshold: 50
+  sentiment:
+    activo: false
+    min_score: 0
+  volumen:
+    activo: false
+    min_volume_norm: 0.5
+  vwap_spread:
+    activo: false
+    max_spread_pct: 2
+modelos:
+- activo: true
+  experiment_name: aapl_transformer_1m_v1
+  peso: 0.1
+- activo: true
+  experiment_name: aapl_gru_1m_v1
+  peso: 0.15
+- activo: true
+  experiment_name: aapl_lstm_1m_v1
+  peso: 0.15
+- activo: true
+  experiment_name: aapl_lgbm_1m_v1
+  peso: 0.2
+- activo: true
+  experiment_name: aapl_rf_1m_v1
+  peso: 0.2
+- activo: true
+  experiment_name: aapl_xgboost_1m_v1
+  peso: 0.2
+- activo: true
+  experiment_name: aapl_random_forest_1m_v1
+  peso: 0.15
