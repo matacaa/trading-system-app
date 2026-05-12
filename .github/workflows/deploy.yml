@@ -1,0 +1,36 @@
+name: Build & Push to ACR
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build base image
+        run: docker build -f docker/Dockerfile.base -t squawks-base .
+
+      - name: Build & push API
+        run: |
+          docker build -f docker/Dockerfile.api -t ${{ secrets.ACR_LOGIN_SERVER }}/squawks-api:latest -t ${{ secrets.ACR_LOGIN_SERVER }}/squawks-api:${{ github.sha }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/squawks-api --all-tags
+
+      - name: Build & push Engine
+        run: |
+          docker build -f docker/Dockerfile.engine -t ${{ secrets.ACR_LOGIN_SERVER }}/squawks-engine:latest -t ${{ secrets.ACR_LOGIN_SERVER }}/squawks-engine:${{ github.sha }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/squawks-engine --all-tags
+
+      - name: Build & push Ingestion
+        run: |
+          docker build -f docker/Dockerfile.ingestion -t ${{ secrets.ACR_LOGIN_SERVER }}/squawks-ingestion:latest -t ${{ secrets.ACR_LOGIN_SERVER }}/squawks-ingestion:${{ github.sha }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/squawks-ingestion --all-tags
