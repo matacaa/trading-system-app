@@ -27,9 +27,9 @@ venv/
 .DS_Store
 
 # ─── Datos pesados ─────────────────────────────────────────
-data/models/*.pt
-data/models/*.pkl
-data/models/*.bin
+#data/models/*.pt
+#data/models/*.pkl
+#data/models/*.bin
 data/raw/
 data/processed/
 *.csv
