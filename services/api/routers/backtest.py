@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from shared.db import sb
+from shared.db import query
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,11 +37,9 @@ async def run_backtest(req: BacktestRequest):
 
 @router.get("/backtest/list")
 async def list_backtests():
-    resp = (
-        sb.table("backtest_runs")
-        .select("id,name,config,status,created_at,total_trades,pnl_total,pnl_pct,win_rate,sharpe_ratio")
-        .order("created_at", desc=True)
-        .limit(50)
-        .execute()
+    rows = query(
+        """SELECT id, name, config, status, created_at, total_trades,
+                  pnl_total, pnl_pct, win_rate, sharpe_ratio
+           FROM backtest_runs ORDER BY created_at DESC LIMIT 50"""
     )
-    return {"backtests": resp.data or []}
+    return {"backtests": rows}

@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 from shared.config import cfg as app_cfg
-from shared.db import sb
+from shared.db import query
 from shared.models.registry import load_model_from_path
 
 log = logging.getLogger(__name__)
@@ -55,24 +55,20 @@ def load_models(modelos_cfg: list[dict]) -> list[dict]:
         log.info(f"Cargando modelo: {exp_name}")
 
         try:
-            resp = (
-                sb.table("silver_model_registry")
-                .select(
-                    "model_name,file_path,feature_columns,"
-                    "scaler_params,feature_source,timeframe,version"
-                )
-                .eq("experiment_name", exp_name)
-                .eq("is_active", True)
-                .eq("status", "complete")
-                .limit(1)
-                .execute()
+            rows = query(
+                """SELECT model_name, file_path, feature_columns,
+                          scaler_params, feature_source, timeframe, version
+                   FROM silver_model_registry
+                   WHERE experiment_name = %s AND is_active = true AND status = 'complete'
+                   LIMIT 1""",
+                [exp_name],
             )
 
-            if not resp.data:
+            if not rows:
                 log.warning(f"  {exp_name} no encontrado (o sin versión activa/complete) — omitiendo")
                 continue
 
-            meta = resp.data[0]
+            meta = rows[0]
             model_name = meta["model_name"]
             feature_cols = json.loads(meta["feature_columns"])
             scaler_params = (

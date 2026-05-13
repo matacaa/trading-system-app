@@ -28,7 +28,7 @@ from alpaca.trading.requests import (
 from alpaca.trading.enums import OrderSide, TimeInForce
 
 from shared.config import cfg
-from shared.db import sb
+from shared.db import execute as db_execute
 from shared.utils.time import now_utc, today_et, utc_isoformat
 
 log = logging.getLogger(__name__)
@@ -199,7 +199,13 @@ def execute_order(
             "run_at": utc_isoformat(),
         }
 
-        sb.table("gold_trades").insert(trade).execute()
+        cols = list(trade.keys())
+        placeholders = ", ".join(["%s"] * len(cols))
+        col_list = ", ".join(cols)
+        db_execute(
+            f"INSERT INTO gold_trades ({col_list}) VALUES ({placeholders})",
+            [trade[c] for c in cols],
+        )
         log.info(f"  {ticker}: orden ejecutada — ID {order.id}")
         return trade
 
@@ -236,14 +242,16 @@ def close_all() -> None:
         # F-40 + I-03: actualizar gold_trades con P&L real
         for ticker, pos in position_data.items():
             try:
-                sb.table("gold_trades").update({
-                    "ts_salida": utc_isoformat(),
-                    "precio_salida": pos["current_price"],
-                    "pnl": round(pos["unrealized_pl"], 2),
-                    "pnl_pct": round(pos["unrealized_plpc"], 2),
-                    "motivo_salida": "close_all_emergencia",
-                    "status": "closed",
-                }).eq("ticker", ticker).is_("ts_salida", "null").execute()
+                db_execute(
+                    """UPDATE gold_trades SET ts_salida = %s, precio_salida = %s,
+                       pnl = %s, pnl_pct = %s, motivo_salida = %s, status = %s
+                       WHERE ticker = %s AND ts_salida IS NULL""",
+                    [
+                        utc_isoformat(), pos["current_price"],
+                        round(pos["unrealized_pl"], 2), round(pos["unrealized_plpc"], 2),
+                        "close_all_emergencia", "closed", ticker,
+                    ],
+                )
             except Exception as e:
                 log.warning(f"  Error actualizando gold_trades para {ticker}: {e}")
 

@@ -154,16 +154,10 @@ def check_guardrails(
     gr = cfg_gr.get("circuit_breaker", {})
     if gr.get("activo"):
         try:
-            from shared.db import sb
+            from shared.db import query_one
 
-            resp = (
-                sb.table("config")
-                .select("trading_enabled")
-                .eq("id", 1)
-                .single()
-                .execute()
-            )
-            if resp.data and not resp.data.get("trading_enabled", True):
+            row = query_one("SELECT trading_enabled FROM config WHERE id = 1")
+            if row and not row.get("trading_enabled", True):
                 return False, "circuit_breaker_activo"
         except Exception as e:
             # F-19: si la tabla no existe, log warning claro

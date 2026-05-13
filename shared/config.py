@@ -7,7 +7,7 @@ Lee .env una sola vez y expone un objeto `cfg` singleton.
 Uso:
     from shared.config import cfg
     
-    client = create_client(cfg.supabase_url, cfg.supabase_key)
+    dsn = cfg.database_url
     models_dir = cfg.models_dir
 """
 
@@ -41,9 +41,10 @@ class _Config:
         for d in (self.data_dir, self.tensors_dir, self.models_dir, self.logs_dir):
             d.mkdir(parents=True, exist_ok=True)
 
-        # ─── Supabase ──────────────────────────────
-        self.supabase_url: str = self._require("SUPABASE_URL")
-        self.supabase_key: str = self._require("SUPABASE_KEY")
+        # ─── PostgreSQL ────────────────────────────
+        self.database_url: str = self._require("DATABASE_URL")
+        # Extraer host para logging (sin password)
+        self.database_host: str = self.database_url.split("@")[-1].split("/")[0] if "@" in self.database_url else "localhost"
 
         # ─── Alpaca ────────────────────────────────
         self.alpaca_api_key: str = self._require("ALPACA_API_KEY")
@@ -89,7 +90,7 @@ class _Config:
     def __repr__(self) -> str:
         return (
             f"_Config("
-            f"supabase={self.supabase_url}, "
+            f"database={self.database_host}, "
             f"alpaca_paper={self.alpaca_paper}, "
             f"repo_root={self.repo_root}"
             f")"

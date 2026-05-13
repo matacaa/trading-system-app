@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from shared.db import sb
+from shared.db import query_one, execute
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -15,18 +15,18 @@ class TradingToggle(BaseModel):
 @router.get("/trading/status")
 async def trading_status():
     try:
-        resp = sb.table("config").select("trading_enabled,updated_at").eq("id", 1).single().execute()
-        return {"trading_enabled": resp.data.get("trading_enabled", False), "updated_at": resp.data.get("updated_at")}
+        row = query_one("SELECT trading_enabled, updated_at FROM config WHERE id = 1")
+        return {"trading_enabled": row.get("trading_enabled", False), "updated_at": row.get("updated_at")} if row else {"trading_enabled": False}
     except Exception as e:
         return {"trading_enabled": False, "error": str(e)}
 
 @router.post("/trading/toggle")
 async def toggle_trading(body: TradingToggle):
     try:
-        sb.table("config").update({
-            "trading_enabled": body.enabled,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", 1).execute()
+        execute(
+            "UPDATE config SET trading_enabled = %s, updated_at = %s WHERE id = 1",
+            [body.enabled, datetime.now(timezone.utc).isoformat()],
+        )
         status = "activado" if body.enabled else "desactivado"
         log.info(f"Trading {status}")
         return {"trading_enabled": body.enabled, "status": status}

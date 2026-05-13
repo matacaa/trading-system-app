@@ -26,7 +26,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from shared.db import sb
+from shared.db import query, upsert
 from shared.indicators import (
     atr,
     bollinger,
@@ -128,21 +128,18 @@ def compute_silver_rt(
     for ticker in tickers:
         try:
             # Leer raw_ohlcv_rt
-            resp = (
-                sb.table("raw_ohlcv_rt")
-                .select("ticker,timeframe,ts,open,high,low,close,volume")
-                .eq("ticker", ticker)
-                .eq("timeframe", timeframe)
-                .order("ts", desc=True)
-                .limit(200)
-                .execute()
+            rows_data = query(
+                """SELECT ticker, timeframe, ts, open, high, low, close, volume
+                   FROM raw_ohlcv_rt WHERE ticker = %s AND timeframe = %s
+                   ORDER BY ts DESC LIMIT 200""",
+                [ticker, timeframe],
             )
 
-            if not resp.data:
+            if not rows_data:
                 log.warning(f"  {ticker}: sin datos en raw_ohlcv_rt")
                 continue
 
-            df = pd.DataFrame(resp.data)
+            df = pd.DataFrame(rows_data)
             df["ts"] = pd.to_datetime(df["ts"], utc=True)
             df = df.sort_values("ts").reset_index(drop=True)
 
@@ -161,18 +158,15 @@ def compute_silver_rt(
             try:
                 ts_min = df["ts"].min() - pd.Timedelta(hours=24)
                 ts_max = df["ts"].max()
-                news_resp = (
-                    sb.table("silver_news_alpaca")
-                    .select("published_at")
-                    .eq("ticker", ticker)
-                    .gte("published_at", ts_min.isoformat())
-                    .lte("published_at", ts_max.isoformat())
-                    .order("published_at")
-                    .execute()
+                news_rows = query(
+                    """SELECT published_at FROM silver_news_alpaca
+                       WHERE ticker = %s AND published_at >= %s AND published_at <= %s
+                       ORDER BY published_at""",
+                    [ticker, ts_min.isoformat(), ts_max.isoformat()],
                 )
-                if news_resp.data:
+                if news_rows:
                     news_ts = pd.to_datetime(
-                        [n["published_at"] for n in news_resp.data], utc=True
+                        [n["published_at"] for n in news_rows], utc=True
                     ).sort_values()
                     for i, ts_val in enumerate(df["ts"]):
                         c1 = int(((news_ts >= ts_val - pd.Timedelta(hours=1)) & (news_ts <= ts_val)).sum())
@@ -186,16 +180,13 @@ def compute_silver_rt(
             # F-82: solo guardar las últimas N barras nuevas (no las 100)
             # Consultamos la última barra guardada para este ticker
             try:
-                last_resp = (
-                    sb.table("silver_features_rt")
-                    .select("ts")
-                    .eq("ticker", ticker)
-                    .order("ts", desc=True)
-                    .limit(1)
-                    .execute()
+                last_rows = query(
+                    """SELECT ts FROM silver_features_rt
+                       WHERE ticker = %s ORDER BY ts DESC LIMIT 1""",
+                    [ticker],
                 )
-                if last_resp.data:
-                    last_saved_ts = pd.to_datetime(last_resp.data[0]["ts"], utc=True)
+                if last_rows:
+                    last_saved_ts = pd.to_datetime(last_rows[0]["ts"], utc=True)
                     df_new = df[df["ts"] > last_saved_ts].copy()
                 else:
                     df_new = df.tail(100).copy()
@@ -226,9 +217,7 @@ def compute_silver_rt(
 
             records = rows.to_dict(orient="records")
             if records:
-                sb.table("silver_features_rt").upsert(
-                    records, on_conflict="ticker,ts"
-                ).execute()
+                upsert("silver_features_rt", records, conflict="ticker,ts")
                 log.info(
                     f"  {ticker}: {len(records)} barras nuevas guardadas en silver_features_rt"
                 )

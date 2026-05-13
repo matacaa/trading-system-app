@@ -1,6 +1,6 @@
 """Endpoints de tickers y velas."""
 from fastapi import APIRouter
-from shared.db import sb
+from shared.db import query
 from shared.symbols import ALL_SYMBOLS
 
 router = APIRouter()
@@ -10,8 +10,11 @@ async def list_tickers():
     tickers_with_data: set[str] = set()
     for ticker in ALL_SYMBOLS:
         try:
-            resp = sb.table("silver_features_1m").select("ticker").eq("ticker", ticker).limit(1).execute()
-            if resp.data:
+            rows = query(
+                "SELECT ticker FROM silver_features_1m WHERE ticker = %s LIMIT 1",
+                [ticker],
+            )
+            if rows:
                 tickers_with_data.add(ticker)
         except Exception:
             pass
@@ -22,15 +25,12 @@ async def list_tickers():
 
 @router.get("/candles")
 async def get_candles(ticker: str = "AAPL", limit: int = 200):
-    resp = (
-        sb.table("raw_ohlcv_rt")
-        .select("ts,open,high,low,close,volume")
-        .eq("ticker", ticker)
-        .order("ts", desc=True)
-        .limit(limit)
-        .execute()
+    rows = query(
+        """SELECT ts, open, high, low, close, volume
+           FROM raw_ohlcv_rt WHERE ticker = %s ORDER BY ts DESC LIMIT %s""",
+        [ticker, limit],
     )
-    candles = sorted(resp.data or [], key=lambda x: x["ts"])
+    candles = sorted(rows, key=lambda x: x["ts"])
     return {"candles": candles, "ticker": ticker}
 
 @router.get("/candles/historical")
@@ -39,11 +39,19 @@ async def get_candles_historical(
     start: str = "", end: str = "", limit: int = 500,
 ):
     table = f"raw_ohlcv_{timeframe}" if timeframe in ("1m","5m","15m") else "raw_ohlcv_1m"
-    q = sb.table(table).select("ts,open,high,low,close,volume").eq("ticker", ticker)
+    conditions = ["ticker = %s"]
+    params: list = [ticker]
     if start:
-        q = q.gte("ts", start)
+        conditions.append("ts >= %s")
+        params.append(start)
     if end:
-        q = q.lte("ts", end)
-    resp = q.order("ts", desc=True).limit(limit).execute()
-    candles = sorted(resp.data or [], key=lambda x: x["ts"])
+        conditions.append("ts <= %s")
+        params.append(end)
+    where = " AND ".join(conditions)
+    params.append(limit)
+    rows = query(
+        f"SELECT ts, open, high, low, close, volume FROM {table} WHERE {where} ORDER BY ts DESC LIMIT %s",
+        params,
+    )
+    candles = sorted(rows, key=lambda x: x["ts"])
     return {"candles": candles, "ticker": ticker, "source": table}

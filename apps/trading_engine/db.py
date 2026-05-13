@@ -1,12 +1,8 @@
 """
 db.py
 ─────
-Funciones de escritura en Supabase para el trading-engine.
+Funciones de escritura en PostgreSQL para el trading-engine.
 Guarda señales, decisiones, logs y timings en las tablas gold_*.
-
-Cambios respecto al original:
-    - F-26: usa shared.db.sb (singleton) en vez de _get_sb() por función
-    - F-32: save_log ahora recibe run_id para correlacionar con timings
 
 Uso:
     from apps.trading_engine.db import save_signals, save_decision, save_log
@@ -18,7 +14,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from shared.db import sb
+from shared.db import upsert, execute
 from shared.utils.time import now_utc, utc_isoformat
 
 log = logging.getLogger(__name__)
@@ -29,18 +25,14 @@ def save_signals(signals: list[dict]) -> None:
     if not signals:
         return
     try:
-        sb.table("gold_signals").upsert(
-            signals, on_conflict="ts,ticker,experiment_name"
-        ).execute()
+        upsert("gold_signals", signals, conflict="ts,ticker,experiment_name")
         log.info(f"  {len(signals)} señales guardadas en gold_signals")
     except Exception as e:
         log.error(f"Error guardando señales: {e}")
 
 
 def save_decision(decision: dict, detalle: dict) -> None:
-    """Guarda la decisión combinada en gold_decisions.
-    F-29: el campo ejecutada se escribe con el valor real del dict.
-    """
+    """Guarda la decisión combinada en gold_decisions."""
     try:
         row = {
             "ts": decision["ts"],
@@ -52,7 +44,7 @@ def save_decision(decision: dict, detalle: dict) -> None:
             "motivo_rechazo": decision.get("motivo_rechazo", ""),
             "run_at": utc_isoformat(),
         }
-        sb.table("gold_decisions").upsert(row, on_conflict="ts,ticker").execute()
+        upsert("gold_decisions", [row], conflict="ts,ticker")
         log.info(
             f"  Decisión guardada: {decision['ticker']} -> "
             f"{decision['decision']} ({decision['score_final']:.1f})"
@@ -71,23 +63,26 @@ def save_log(
     run_id: str = "",
     max_retries: int = 3,
 ) -> None:
-    """Guarda el log de auditoría de cada ejecución en gold_logs.
-    F-30: con retry (hasta max_retries intentos).
+    """Guarda el log de auditoría de cada ejecución en gold_logs."""
+    sql = """
+        INSERT INTO gold_logs (run_at, run_id, duration_s, tickers_procesados,
+                               senales_generadas, ordenes_ejecutadas, errores, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
-    row = {
-        "run_at": utc_isoformat(),
-        "run_id": run_id,
-        "duration_s": round(duration_s, 2),
-        "tickers_procesados": json.dumps(tickers_procesados),
-        "senales_generadas": senales_generadas,
-        "ordenes_ejecutadas": ordenes_ejecutadas,
-        "errores": json.dumps(errores),
-        "status": status,
-    }
+    params = (
+        utc_isoformat(),
+        run_id,
+        round(duration_s, 2),
+        json.dumps(tickers_procesados),
+        senales_generadas,
+        ordenes_ejecutadas,
+        json.dumps(errores),
+        status,
+    )
 
     for attempt in range(1, max_retries + 1):
         try:
-            sb.table("gold_logs").insert(row).execute()
+            execute(sql, params)
             log.info(f"  Log guardado: {status} ({duration_s:.1f}s)")
             return
         except Exception as e:
@@ -108,13 +103,10 @@ def save_timing(
 ) -> None:
     """Guarda el timing de una fase del pipeline en gold_pipeline_timings."""
     try:
-        sb.table("gold_pipeline_timings").insert({
-            "run_at": utc_isoformat(),
-            "run_id": run_id,
-            "fase": fase,
-            "duration_s": round(duration_s, 3),
-            "ticker": ticker,
-            "status": status,
-        }).execute()
+        execute(
+            """INSERT INTO gold_pipeline_timings (run_at, run_id, fase, duration_s, ticker, status)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (utc_isoformat(), run_id, fase, round(duration_s, 3), ticker, status),
+        )
     except Exception as e:
         log.error(f"Error guardando timing de {fase}: {e}")

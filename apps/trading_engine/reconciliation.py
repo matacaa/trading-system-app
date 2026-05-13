@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from shared.db import sb
+from shared.db import query, execute
 from shared.utils.time import utc_isoformat
 from apps.trading_engine.alpaca_trader import _get_trading_client
 
@@ -33,14 +33,11 @@ _CLOSED_STATUSES = {"filled", "canceled", "expired", "done_for_day", "replaced"}
 def _get_open_trades() -> list[dict]:
     """Lee trades sin ts_salida de gold_trades."""
     try:
-        resp = (
-            sb.table("gold_trades")
-            .select("id, ticker, alpaca_order_id, precio_entrada, qty, ts_entrada")
-            .is_("ts_salida", "null")
-            .not_.is_("alpaca_order_id", "null")
-            .execute()
+        return query(
+            """SELECT id, ticker, alpaca_order_id, precio_entrada, qty, ts_entrada
+               FROM gold_trades
+               WHERE ts_salida IS NULL AND alpaca_order_id IS NOT NULL"""
         )
-        return resp.data or []
     except Exception as e:
         log.error(f"Error leyendo trades abiertos: {e}")
         return []
@@ -195,7 +192,9 @@ def reconcile_trades() -> int:
             continue
 
         try:
-            sb.table("gold_trades").update(result).eq("id", trade["id"]).execute()
+            set_clause = ", ".join(f"{k} = %s" for k in result.keys())
+            values = list(result.values()) + [trade["id"]]
+            execute(f"UPDATE gold_trades SET {set_clause} WHERE id = %s", values)
             updated += 1
         except Exception as e:
             log.error(f"  Error actualizando trade {trade['id']}: {e}")

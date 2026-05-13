@@ -18,7 +18,7 @@ from alpaca.data.historical import NewsClient
 from alpaca.data.requests import NewsRequest
 
 from shared.config import cfg
-from shared.db import sb
+from shared.db import upsert
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def fetch_news(tickers: list[str], hours: int = 24) -> pd.DataFrame:
             if n["url"] not in seen_urls:
                 seen_urls.add(n["url"])
                 unique_news.append(n)
-        sb.table("raw_news_rt").upsert(unique_news, on_conflict="url").execute()
+        upsert("raw_news_rt", unique_news, conflict="url")
         log.info(f"  {len(unique_news)} noticias guardadas en raw_news_rt")
     except Exception as e:
         log.error(f"  Error guardando noticias: {e}")

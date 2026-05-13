@@ -23,7 +23,7 @@ import logging
 import pkgutil
 from pathlib import Path
 
-from shared.db import sb
+from shared.db import query_one
 from shared.models.base import BaseModel
 
 log = logging.getLogger(__name__)
@@ -147,18 +147,15 @@ def get_model(
 
     if check_library:
         try:
-            resp = (
-                sb.table("silver_model_library")
-                .select("model_name, model_type, active, default_params")
-                .eq("model_name", model_name)
-                .single()
-                .execute()
+            library_entry = query_one(
+                """SELECT model_name, model_type, active, default_params
+                   FROM silver_model_library WHERE model_name = %s""",
+                [model_name],
             )
-            library_entry = resp.data
         except Exception as e:
             log.warning(
                 f"No se pudo consultar silver_model_library para '{model_name}': {e}. "
-                f"Continuando sin defaults de Supabase."
+                f"Continuando sin defaults de PostgreSQL."
             )
             library_entry = None
 
@@ -166,7 +163,7 @@ def get_model(
             if not library_entry.get("active", False):
                 raise ValueError(
                     f"Modelo '{model_name}' está desactivado en silver_model_library. "
-                    f"Actívalo en Supabase o usa check_library=False."
+                    f"Actívalo en PostgreSQL o usa check_library=False."
                 )
             default_params = library_entry.get("default_params") or {}
 

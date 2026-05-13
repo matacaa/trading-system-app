@@ -190,7 +190,7 @@ def enrich_sentiment(
     Returns:
         DataFrame con sentiment_label y sentiment_score por barra
     """
-    from shared.db import sb
+    from shared.db import query as db_query
 
     df = df.copy()
     df["sentiment_label"] = None
@@ -206,16 +206,13 @@ def enrich_sentiment(
         return df
 
     try:
-        resp = (
-            sb.table(news_table)
-            .select("published_at,sentiment_label,sentiment_score")
-            .eq("ticker", ticker)
-            .gte("published_at", (ts_min - pd.Timedelta(minutes=window_minutes)).isoformat())
-            .lte("published_at", ts_max.isoformat())
-            .order("published_at")
-            .execute()
+        news_data = db_query(
+            f"""SELECT published_at, sentiment_label, sentiment_score
+                FROM {news_table}
+                WHERE ticker = %s AND published_at >= %s AND published_at <= %s
+                ORDER BY published_at""",
+            [ticker, (ts_min - pd.Timedelta(minutes=window_minutes)).isoformat(), ts_max.isoformat()],
         )
-        news_data = resp.data or []
     except Exception:
         return df
 

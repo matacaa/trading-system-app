@@ -21,7 +21,7 @@ from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.data.enums import DataFeed
 
 from shared.config import cfg
-from shared.db import sb
+from shared.db import upsert
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def fetch_prices(
 
     records = rows.to_dict(orient="records")
     if records:
-        sb.table("raw_ohlcv_rt").upsert(records, on_conflict="ticker,timeframe,ts").execute()
+        upsert("raw_ohlcv_rt", records, conflict="ticker,timeframe,ts")
         log.info(f"  {len(records)} barras guardadas en raw_ohlcv_rt")
 
     return df

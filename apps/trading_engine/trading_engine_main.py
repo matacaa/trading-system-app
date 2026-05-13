@@ -42,14 +42,14 @@ log = logging.getLogger(__name__)
 
 
 def _is_trading_enabled() -> bool:
-    """Lee config.trading_enabled de Supabase.
+    """Lee config.trading_enabled de PostgreSQL.
     Controla si las órdenes se ejecutan (botón 'Invertir' del frontend).
     Si la tabla no existe o hay error, retorna False (fail-safe).
     """
     try:
-        from shared.db import sb
-        resp = sb.table("config").select("trading_enabled").eq("id", 1).single().execute()
-        return bool(resp.data.get("trading_enabled", False)) if resp.data else False
+        from shared.db import query_one
+        row = query_one("SELECT trading_enabled FROM config WHERE id = 1")
+        return bool(row.get("trading_enabled", False)) if row else False
     except Exception as e:
         log.warning(f"No se pudo leer config.trading_enabled: {e}. Asumiendo False (no operar).")
         return False

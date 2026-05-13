@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
-from shared.db import sb
+from shared.db import query, query_one
 from shared.config import cfg as app_cfg
 
 log = logging.getLogger(__name__)
@@ -22,20 +22,19 @@ class LiveEnsembleConfig(PydanticModel):
 
 @router.get("/live/status")
 async def live_status():
-    """Estado del pipeline.
-    TODO fase 1: leer estado del contenedor en vez de subprocess local.
-    """
-    last_log = sb.table("gold_logs").select("run_at,status,duration_s,errores").order("run_at", desc=True).limit(1).execute()
+    last_log = query(
+        "SELECT run_at, status, duration_s, errores FROM gold_logs ORDER BY run_at DESC LIMIT 1"
+    )
     trading_enabled = False
     try:
-        cfg_resp = sb.table("config").select("trading_enabled").eq("id", 1).single().execute()
-        trading_enabled = bool(cfg_resp.data.get("trading_enabled", False)) if cfg_resp.data else False
+        cfg_row = query_one("SELECT trading_enabled FROM config WHERE id = 1")
+        trading_enabled = bool(cfg_row.get("trading_enabled", False)) if cfg_row else False
     except Exception:
         pass
     return {
-        "running": False,  # TODO: check container status
+        "running": False,
         "trading_enabled": trading_enabled,
-        "last_run": last_log.data[0] if last_log.data else None,
+        "last_run": last_log[0] if last_log else None,
     }
 
 @router.get("/live/config")

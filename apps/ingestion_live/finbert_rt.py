@@ -16,7 +16,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from shared.config import cfg
-from shared.db import sb
+from shared.db import query
 
 log = logging.getLogger(__name__)
 
@@ -65,17 +65,12 @@ def get_sentiment(tickers: list[str], hours: int = 24) -> dict[str, dict]:
 
     for ticker in tickers:
         try:
-            resp = (
-                sb.table("raw_news_rt")
-                .select("title, published_at")
-                .eq("ticker", ticker)
-                .gte("published_at", cutoff)
-                .order("published_at", desc=True)
-                .limit(20)
-                .execute()
+            noticias = query(
+                """SELECT title, published_at FROM raw_news_rt
+                   WHERE ticker = %s AND published_at >= %s
+                   ORDER BY published_at DESC LIMIT 20""",
+                [ticker, cutoff],
             )
-
-            noticias = resp.data or []
 
             if not noticias:
                 log.info(f"  {ticker}: sin noticias — neutral")
