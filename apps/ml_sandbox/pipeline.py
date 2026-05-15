@@ -16,12 +16,12 @@ import logging
 
 import pandas as pd
 
-from shared.utils.logging import setup_logging
 from apps.ml_sandbox.config import load_config
 from apps.ml_sandbox.data.loader import load_data
 from apps.ml_sandbox.data.splitter import split_data
-from apps.ml_sandbox.train import run_train
 from apps.ml_sandbox.evaluate import run_evaluate
+from apps.ml_sandbox.train import run_train
+from shared.utils.logging import setup_logging
 
 log = logging.getLogger(__name__)
 

@@ -1,6 +1,8 @@
 """Spike de precio: movimiento porcentual brusco."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class PriceSpike(BaseSignalSource):

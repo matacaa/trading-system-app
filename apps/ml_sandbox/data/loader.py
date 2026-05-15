@@ -16,8 +16,8 @@ import logging
 import numpy as np
 import pandas as pd
 
-from shared.db import sb
 from apps.ml_sandbox.config import ExperimentConfig
+from shared.db import sb
 
 log = logging.getLogger(__name__)
 

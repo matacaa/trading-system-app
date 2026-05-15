@@ -20,16 +20,16 @@ import logging
 from functools import lru_cache
 
 from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.requests import (
     MarketOrderRequest,
-    TakeProfitRequest,
     StopLossRequest,
+    TakeProfitRequest,
 )
-from alpaca.trading.enums import OrderSide, TimeInForce
 
 from shared.config import cfg
 from shared.db import execute as db_execute
-from shared.utils.time import now_utc, today_et, utc_isoformat
+from shared.utils.time import today_et, utc_isoformat
 
 log = logging.getLogger(__name__)
 
@@ -97,9 +97,10 @@ def get_portfolio_state() -> dict:
 def get_orders_today() -> int:
     """Cuenta las órdenes ejecutadas hoy (en ET, no UTC — F-28/F-41)."""
     try:
-        from alpaca.trading.requests import GetOrdersRequest
-        from alpaca.trading.enums import QueryOrderStatus
         from datetime import datetime
+
+        from alpaca.trading.enums import QueryOrderStatus
+        from alpaca.trading.requests import GetOrdersRequest
 
         client = _get_trading_client()
         # F-28/F-41: usar fecha ET para que el día de trading sea correcto

@@ -20,13 +20,13 @@ import logging
 import time
 from datetime import datetime
 
-from shared.symbols import ALL_SYMBOLS
-from shared.utils.logging import setup_logging
+from apps.ingestion_historical.finbert import run_finbert
 from apps.ingestion_historical.ingestion import run_update
 from apps.ingestion_historical.news_alpaca import download_all as download_news
-from apps.ingestion_historical.finbert import run_finbert
 from apps.ingestion_historical.silver import run_silver
 from apps.ingestion_historical.tensor import run_tensor
+from shared.symbols import ALL_SYMBOLS
+from shared.utils.logging import setup_logging
 
 log = logging.getLogger(__name__)
 

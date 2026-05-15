@@ -1,7 +1,8 @@
 """Endpoints de señales, decisiones y trades."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
+
 from shared.db import query
 
 router = APIRouter()
@@ -20,7 +21,7 @@ async def latest_signals(ticker: str = "AAPL"):
 
 @router.get("/decisions/today")
 async def today_decisions(ticker: str = "AAPL"):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     rows = query(
         """SELECT ts, decision, score_final, ejecutada, motivo_rechazo
            FROM gold_decisions WHERE ticker = %s AND ts >= %s ORDER BY ts DESC""",

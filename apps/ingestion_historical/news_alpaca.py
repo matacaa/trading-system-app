@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import requests
 
@@ -35,8 +35,8 @@ def _headers() -> dict:
 
 def fetch_news(symbols: list[str], days: int = 7, limit: int = 50) -> list[dict]:
     """Descarga noticias de Alpaca, paginando automáticamente."""
-    start = (datetime.now(tz=timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    end = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start = (datetime.now(tz=UTC) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     all_news: list[dict] = []
     page_token = None
@@ -82,7 +82,7 @@ def parse_news(raw: list[dict], universe: set[str]) -> list[dict]:
         try:
             dt = datetime.fromisoformat(published.replace("Z", "+00:00"))
         except Exception:
-            dt = datetime.now(tz=timezone.utc)
+            dt = datetime.now(tz=UTC)
 
         for ticker in mentioned:
             rows.append({

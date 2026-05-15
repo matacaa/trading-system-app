@@ -1,6 +1,8 @@
 """MACD zero cross: MACD cruza la línea cero."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class MACDZeroCross(BaseSignalSource):

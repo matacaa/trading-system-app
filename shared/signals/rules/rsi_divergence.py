@@ -1,6 +1,8 @@
 """RSI divergence: precio y RSI divergen (señal de cambio de tendencia)."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class RSIDivergence(BaseSignalSource):

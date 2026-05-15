@@ -1,6 +1,8 @@
 """Golden cross: EMA9 cruza por encima de EMA21 (proxy de SMA20/SMA50)."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class GoldenCross(BaseSignalSource):

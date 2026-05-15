@@ -21,7 +21,7 @@ Cambios respecto a los originales:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 
@@ -189,7 +189,7 @@ def decide(
     Returns:
         dict con decision, score_final, ejecutada, motivo_rechazo
     """
-    ts = row.get("ts", datetime.now(timezone.utc).isoformat())
+    ts = row.get("ts", datetime.now(UTC).isoformat())
 
     pasa, motivo = check_guardrails(row, score_final, cfg_gr, estado)
 

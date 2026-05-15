@@ -113,7 +113,7 @@ def load_config(path: str | Path) -> ExperimentConfig:
     if not path.is_absolute():
         path = app_cfg.repo_root / path
 
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
 
     cfg = ExperimentConfig(raw)

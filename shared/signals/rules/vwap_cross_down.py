@@ -1,6 +1,8 @@
 """VWAP cross down: precio cruza por debajo del VWAP."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class VWAPCrossDown(BaseSignalSource):

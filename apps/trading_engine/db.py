@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
 
-from shared.db import upsert, execute
-from shared.utils.time import now_utc, utc_isoformat
+from shared.db import execute, upsert
+from shared.utils.time import utc_isoformat
 
 log = logging.getLogger(__name__)
 

@@ -1,6 +1,8 @@
 """Sentiment flip: sentimiento cambia de dirección en las últimas horas."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class SentimentFlip(BaseSignalSource):

@@ -20,10 +20,9 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 
@@ -131,7 +130,7 @@ def predict_ensemble(
     Returns:
         (score_final, detalle_por_modelo, signals_para_db)
     """
-    ts = row.get("ts", datetime.now(timezone.utc).isoformat())
+    ts = row.get("ts", datetime.now(UTC).isoformat())
     ticker = row.get("ticker", "")
 
     scores: list[tuple[float, float]] = []  # (score, peso)
@@ -165,7 +164,7 @@ def predict_ensemble(
                 "y_pred": 1 if y_prob >= 0.5 else 0,
                 "y_prob": round(y_prob, 4),
                 "score": round(score, 2),
-                "run_at": datetime.now(timezone.utc).isoformat(),
+                "run_at": datetime.now(UTC).isoformat(),
             })
 
         except Exception as e:

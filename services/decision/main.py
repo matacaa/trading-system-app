@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from shared.guardrails import decide, check_guardrails
+from shared.guardrails import decide
 
 log = logging.getLogger("decision")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")

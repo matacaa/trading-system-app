@@ -24,19 +24,18 @@ import argparse
 import logging
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import yaml
 from apscheduler.schedulers.blocking import BlockingScheduler
 
+from apps.trading_engine.alpaca_trader import execute_order, get_orders_today, get_portfolio_state
+from apps.trading_engine.db import save_decision, save_log, save_signals, save_timing
+from apps.trading_engine.reconciliation import reconcile_trades
 from shared.config import cfg as app_cfg
 from shared.guardrails import decide
 from shared.inference import load_models, predict_ensemble
 from shared.utils.logging import setup_logging
-
-from apps.trading_engine.alpaca_trader import execute_order, get_portfolio_state, get_orders_today
-from apps.trading_engine.db import save_signals, save_decision, save_log, save_timing
-from apps.trading_engine.reconciliation import reconcile_trades
 
 log = logging.getLogger(__name__)
 
@@ -64,7 +63,7 @@ def load_config() -> dict:
             f"Crea el fichero a partir de config/live/trading.yaml.example"
         )
 
-    with open(trading_yaml, "r", encoding="utf-8") as f:
+    with open(trading_yaml, encoding="utf-8") as f:
         trading_cfg = yaml.safe_load(f)
 
     # Cargar el yaml del ensemble activo
@@ -85,7 +84,7 @@ def load_config() -> dict:
             f"El live debería usar config/live/ensemble.yaml"
         )
 
-    with open(ensemble_path, "r", encoding="utf-8") as f:
+    with open(ensemble_path, encoding="utf-8") as f:
         ensemble_cfg = yaml.safe_load(f)
 
     cfg = {**ensemble_cfg}
@@ -96,12 +95,12 @@ def load_config() -> dict:
 
 def run(cfg: dict, modelos: list) -> None:
     """Ejecuta una iteración completa del pipeline."""
-    from apps.ingestion_live.alpaca_prices import fetch_prices
     from apps.ingestion_live.alpaca_news import fetch_news
+    from apps.ingestion_live.alpaca_prices import fetch_prices
     from apps.ingestion_live.finbert_rt import get_sentiment
     from apps.ingestion_live.silver_rt import compute_silver_rt
 
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     run_id = start.strftime("%Y%m%d_%H%M%S")
     tickers = cfg.get("data", {}).get("tickers", [])
     context_tickers = cfg.get("data", {}).get("context_tickers", [])
@@ -145,7 +144,7 @@ def run(cfg: dict, modelos: list) -> None:
         if df_silver.empty:
             log.warning("DataFrame silver vacío — abortando iteración")
             save_log(
-                duration_s=( datetime.now(timezone.utc) - start).total_seconds(),
+                duration_s=( datetime.now(UTC) - start).total_seconds(),
                 tickers_procesados=tickers,
                 senales_generadas=0,
                 ordenes_ejecutadas=0,
@@ -166,7 +165,7 @@ def run(cfg: dict, modelos: list) -> None:
         if portfolio.get("error"):
             log.error("Portfolio state falló — abortando iteración (no se operará)")
             save_log(
-                duration_s=(datetime.now(timezone.utc) - start).total_seconds(),
+                duration_s=(datetime.now(UTC) - start).total_seconds(),
                 tickers_procesados=tickers,
                 senales_generadas=0,
                 ordenes_ejecutadas=0,
@@ -267,7 +266,7 @@ def run(cfg: dict, modelos: list) -> None:
         errores.append(msg)
 
     # Guardar log global
-    duration = (datetime.now(timezone.utc) - start).total_seconds()
+    duration = (datetime.now(UTC) - start).total_seconds()
     save_log(
         duration_s=duration,
         tickers_procesados=tickers,
@@ -326,7 +325,7 @@ def main():
         trigger="interval",
         minutes=interval,
         args=[cfg, modelos],
-        next_run_time=datetime.now(timezone.utc),
+        next_run_time=datetime.now(UTC),
         max_instances=1,
         coalesce=True,
     )

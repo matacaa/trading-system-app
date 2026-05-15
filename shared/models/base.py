@@ -107,7 +107,7 @@ class BaseModel(ABC):
 
     @classmethod
     @abstractmethod
-    def load(cls, path: str | Path, task: str = "classification") -> "BaseModel":
+    def load(cls, path: str | Path, task: str = "classification") -> BaseModel:
         """Carga un modelo entrenado desde disco."""
         ...
 

@@ -1,5 +1,6 @@
 """Endpoints de tickers y velas."""
 from fastapi import APIRouter
+
 from shared.db import query
 from shared.symbols import ALL_SYMBOLS
 

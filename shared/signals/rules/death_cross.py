@@ -1,6 +1,8 @@
 """Death cross: SMA rápida cruza por debajo de SMA lenta."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class DeathCross(BaseSignalSource):

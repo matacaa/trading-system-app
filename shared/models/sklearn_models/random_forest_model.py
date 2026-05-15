@@ -64,7 +64,7 @@ class RandomForestModel(BaseModel):
         joblib.dump(self._model, path)
 
     @classmethod
-    def load(cls, path: str | Path, task: str = "classification") -> "RandomForestModel":
+    def load(cls, path: str | Path, task: str = "classification") -> RandomForestModel:
         instance = cls(task=task)
         instance._model = joblib.load(path)
         return instance

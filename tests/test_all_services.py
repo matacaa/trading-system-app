@@ -17,8 +17,6 @@ from __future__ import annotations
 
 import sys
 import time
-import traceback
-from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Setup path ────────────────────────────────────────────────────
@@ -84,7 +82,7 @@ def test_supabase_connection():
     from shared.db import sb
     resp = sb.table("config").select("id").limit(1).execute()
     assert resp.data is not None, "Supabase no devolvió datos"
-    print(f"       Conexión OK, tabla config accesible")
+    print("       Conexión OK, tabla config accesible")
     return True
 
 run_test("Config", "Conexión a Supabase", test_supabase_connection)
@@ -143,7 +141,7 @@ def test_registry_model_metadata():
         assert cls.name == name, f"{cls.__name__}.name = '{cls.name}' != '{name}'"
         assert cls.model_type in ("tree", "deep_learning"), f"{name}: model_type inválido: {cls.model_type}"
         assert isinstance(cls.requires_gpu, bool), f"{name}: requires_gpu no es bool"
-    print(f"       Todos los modelos tienen name, model_type, requires_gpu correctos")
+    print("       Todos los modelos tienen name, model_type, requires_gpu correctos")
     return True
 
 run_test("Registry", "Metadata consistente en todos los modelos", test_registry_model_metadata)
@@ -185,7 +183,7 @@ def test_signal_list():
     for s in signals:
         assert s["source_type"] == "rule", f"{s['name']} no es tipo 'rule'"
         assert s["requires_training"] is False
-    print(f"       Todas las señales son reglas sin training")
+    print("       Todas las señales son reglas sin training")
     return True
 
 run_test("Signals", "list_signals() metadata correcta", test_signal_list)
@@ -193,6 +191,7 @@ run_test("Signals", "list_signals() metadata correcta", test_signal_list)
 
 def test_signal_golden_cross():
     import pandas as pd
+
     from shared.signals import get_signal
 
     sig = get_signal("golden_cross")
@@ -215,6 +214,7 @@ run_test("Signals", "Golden Cross: evalúa correctamente", test_signal_golden_cr
 
 def test_signal_rsi_oversold():
     import pandas as pd
+
     from shared.signals import get_signal
 
     sig = get_signal("rsi_oversold")
@@ -222,7 +222,7 @@ def test_signal_rsi_oversold():
     # RSI = 25 → sobreventa
     row = pd.Series({"rsi_14": 25.0})
     result = sig.evaluate(row)
-    assert result.triggered is True, f"RSI 25 debería ser sobreventa"
+    assert result.triggered is True, "RSI 25 debería ser sobreventa"
     assert result.priority in ("urgent", "normal")
     print(f"       RSI=25: triggered={result.triggered}, priority={result.priority}")
 
@@ -245,6 +245,7 @@ run_test("Signals", "RSI Oversold: umbrales y prioridad", test_signal_rsi_overso
 
 def test_signal_volume_spike():
     import pandas as pd
+
     from shared.signals import get_signal
 
     sig = get_signal("volume_spike")
@@ -267,6 +268,7 @@ run_test("Signals", "Volume Spike: detecta volumen anómalo", test_signal_volume
 
 def test_signal_price_spike():
     import pandas as pd
+
     from shared.signals import get_signal
 
     sig = get_signal("price_spike")
@@ -296,6 +298,7 @@ section("4. Guardrails")
 
 def test_guardrails_score_minimo():
     import pandas as pd
+
     from shared.guardrails import check_guardrails
 
     row = pd.Series({"close": 180, "rsi_14": 50, "is_market_open": True})
@@ -308,7 +311,7 @@ def test_guardrails_score_minimo():
 
     pasa, motivo = check_guardrails(row, score=70, cfg_gr=cfg, estado=estado)
     assert pasa is True
-    print(f"       Score 70 >= 65: aprobado")
+    print("       Score 70 >= 65: aprobado")
     return True
 
 run_test("Guardrails", "Score mínimo", test_guardrails_score_minimo)
@@ -316,6 +319,7 @@ run_test("Guardrails", "Score mínimo", test_guardrails_score_minimo)
 
 def test_guardrails_rsi():
     import pandas as pd
+
     from shared.guardrails import check_guardrails
 
     cfg = {"score_threshold": 50, "rsi": {"activo": True, "compra_max": 70, "venta_min": 30}}
@@ -331,7 +335,7 @@ def test_guardrails_rsi():
     row = pd.Series({"rsi_14": 50, "is_market_open": True})
     pasa, motivo = check_guardrails(row, score=80, cfg_gr=cfg, estado=estado)
     assert pasa is True
-    print(f"       RSI=50: aprobado")
+    print("       RSI=50: aprobado")
     return True
 
 run_test("Guardrails", "RSI sobrecompra/sobreventa", test_guardrails_rsi)
@@ -339,6 +343,7 @@ run_test("Guardrails", "RSI sobrecompra/sobreventa", test_guardrails_rsi)
 
 def test_guardrails_max_posiciones():
     import pandas as pd
+
     from shared.guardrails import check_guardrails
 
     row = pd.Series({"is_market_open": True})
@@ -352,7 +357,7 @@ def test_guardrails_max_posiciones():
     estado["n_posiciones"] = 1
     pasa, _ = check_guardrails(row, score=80, cfg_gr=cfg, estado=estado)
     assert pasa is True
-    print(f"       1/3 posiciones: aprobado")
+    print("       1/3 posiciones: aprobado")
     return True
 
 run_test("Guardrails", "Máximo de posiciones", test_guardrails_max_posiciones)
@@ -360,6 +365,7 @@ run_test("Guardrails", "Máximo de posiciones", test_guardrails_max_posiciones)
 
 def test_decide_function():
     import pandas as pd
+
     from shared.guardrails import decide
 
     row = pd.Series({"ts": "2025-01-01T10:00:00Z", "rsi_14": 50, "is_market_open": True})
@@ -538,8 +544,17 @@ run_test("Features", "FinBERT sentiment(AAPL)", test_finbert_sentiment)
 section("8. API Routers")
 
 def test_router_imports():
-    from services.api.routers import health, tickers, models, training
-    from services.api.routers import backtest, live, trading as trading_r, signals, squawks
+    from services.api.routers import (
+        backtest,
+        health,
+        live,
+        models,
+        signals,
+        squawks,
+        tickers,
+        training,
+    )
+    from services.api.routers import trading as trading_r
 
     routers = {
         "health": health.router, "tickers": tickers.router,
@@ -580,7 +595,7 @@ run_test("API", "FastAPI app con todos los routers", test_api_app_creates)
 section("9. Squawk Service")
 
 def test_squawk_text_generation():
-    from services.squawk.main import generate_squawk_text, determine_priority
+    from services.squawk.main import determine_priority, generate_squawk_text
 
     signal = {"ticker": "AAPL", "score": 87, "decision": "BUY"}
     text = generate_squawk_text(signal)

@@ -24,12 +24,12 @@ def setup_logging(
         app_name: nombre de la app para el prefijo
     """
     fmt = f"%(asctime)s [%(levelname)s] [{app_name}] %(name)s: %(message)s"
-    
+
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
     if log_file:
         log_file.parent.mkdir(parents=True, exist_ok=True)
         handlers.append(logging.FileHandler(log_file))
-    
+
     logging.basicConfig(
         level=level,
         format=fmt,

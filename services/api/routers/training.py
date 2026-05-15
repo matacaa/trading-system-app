@@ -1,10 +1,7 @@
 """Endpoints de entrenamiento de modelos."""
 import logging
-import tempfile
-from pathlib import Path
 from typing import Any
 
-import yaml
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -34,8 +31,9 @@ async def train(req: TrainRequest):
     """
     # Por ahora mantiene el comportamiento actual (subprocess)
     # Se reemplazará por Service Bus queue en la fase 4
-    from apps.api.main import _generate_experiment_yaml, _run_pipeline
     import sys
+
+    from apps.api.main import _generate_experiment_yaml, _run_pipeline
     tmp, exp_name = _generate_experiment_yaml(req)
     result = _run_pipeline(
         [sys.executable, "-m", "apps.ml_sandbox.pipeline", str(tmp)],

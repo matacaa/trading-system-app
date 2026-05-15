@@ -1,6 +1,8 @@
 """Triple EMA align: las 3 EMAs alineadas en la misma dirección."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class TripleEMAAlign(BaseSignalSource):

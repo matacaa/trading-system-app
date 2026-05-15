@@ -19,12 +19,12 @@ import argparse
 import logging
 import time
 
-from shared.utils.logging import setup_logging
-from shared.symbols import ALL_SYMBOLS
-from apps.ingestion_live.alpaca_prices import fetch_prices
 from apps.ingestion_live.alpaca_news import fetch_news
+from apps.ingestion_live.alpaca_prices import fetch_prices
 from apps.ingestion_live.finbert_rt import get_sentiment
 from apps.ingestion_live.silver_rt import compute_silver_rt
+from shared.symbols import ALL_SYMBOLS
+from shared.utils.logging import setup_logging
 
 log = logging.getLogger(__name__)
 

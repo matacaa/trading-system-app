@@ -19,7 +19,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 # Cargar .env desde la raíz del repo (auto-detectado)
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_REPO_ROOT / ".env")

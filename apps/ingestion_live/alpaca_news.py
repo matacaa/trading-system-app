@@ -11,7 +11,7 @@ Uso:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 from alpaca.data.historical import NewsClient
@@ -27,7 +27,7 @@ def fetch_news(tickers: list[str], hours: int = 24) -> pd.DataFrame:
     """Descarga noticias RT de Alpaca y guarda en raw_news_rt."""
     client = NewsClient(cfg.alpaca_api_key, cfg.alpaca_secret_key)
 
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     start = end - timedelta(hours=hours)
 
     log.info(f"Descargando noticias últimas {hours}h para {tickers}")
@@ -59,7 +59,7 @@ def fetch_news(tickers: list[str], hours: int = 24) -> pd.DataFrame:
                     "summary": article.summary or "",
                     "url": article.url or "",
                     "source": article.source or "alpaca",
-                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    "fetched_at": datetime.now(UTC).isoformat(),
                 })
                 count += 1
 

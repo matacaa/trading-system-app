@@ -26,8 +26,8 @@ from contextlib import contextmanager
 from functools import lru_cache
 
 import psycopg2
-import psycopg2.pool
 import psycopg2.extras
+import psycopg2.pool
 
 from shared.config import cfg
 

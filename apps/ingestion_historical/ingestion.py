@@ -12,15 +12,14 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 
+from apps.ingestion_historical.downloader import download_block, get_date_blocks
 from shared.config import cfg
 from shared.db import sb
-from shared.symbols import ALL_SYMBOLS
 from shared.utils.time import utc_isoformat
-from apps.ingestion_historical.downloader import get_date_blocks, download_block
 
 log = logging.getLogger(__name__)
 
@@ -148,7 +147,7 @@ def run_update(
     """Descarga solo datos nuevos desde la última fecha disponible."""
     intervals = intervals or INTERVALS
     results: dict[str, int] = {}
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     for ticker in tickers:
         sym_id = _get_symbol_id(ticker)

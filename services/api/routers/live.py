@@ -1,14 +1,13 @@
 """Endpoints del pipeline live."""
 import logging
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel as PydanticModel
-from shared.db import query, query_one
+
 from shared.config import cfg as app_cfg
+from shared.db import query, query_one
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -42,7 +41,7 @@ async def get_live_config():
     ensemble_path = app_cfg.config_dir / "live" / "ensemble.yaml"
     if not ensemble_path.exists():
         return {"config": None, "error": "ensemble.yaml no encontrado"}
-    with open(ensemble_path, "r", encoding="utf-8") as f:
+    with open(ensemble_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return {"config": config}
 

@@ -12,13 +12,13 @@ Uso:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
+from alpaca.data.enums import DataFeed
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
-from alpaca.data.enums import DataFeed
 
 from shared.config import cfg
 from shared.db import upsert
@@ -43,7 +43,7 @@ def fetch_prices(
 
     client = StockHistoricalDataClient(cfg.alpaca_api_key, cfg.alpaca_secret_key)
 
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     start = end - timedelta(minutes=bars * int(timeframe.replace("m", "")))
 
     log.info(f"Descargando {bars} barras {timeframe} para {tickers}")
@@ -65,7 +65,7 @@ def fetch_prices(
 
     df = df.rename(columns={"symbol": "ticker", "timestamp": "ts"})
     df["timeframe"] = timeframe
-    df["fetched_at"] = datetime.now(timezone.utc).isoformat()
+    df["fetched_at"] = datetime.now(UTC).isoformat()
 
     rows = df[["ticker", "timeframe", "ts", "open", "high", "low", "close", "volume", "fetched_at"]].copy()
     rows["ts"] = rows["ts"].astype(str)

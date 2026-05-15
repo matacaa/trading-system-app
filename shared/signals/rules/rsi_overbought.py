@@ -1,6 +1,8 @@
 """RSI sobrecompra: RSI sube por encima del umbral."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class RSIOverbought(BaseSignalSource):

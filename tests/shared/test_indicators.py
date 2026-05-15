@@ -10,7 +10,6 @@ TODO Fase 3.4: implementar tests comparando training vs live.
 
 from __future__ import annotations
 
-import pytest
 import pandas as pd
 
 

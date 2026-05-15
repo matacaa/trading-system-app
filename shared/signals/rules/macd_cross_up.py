@@ -1,6 +1,8 @@
 """MACD cross up: línea MACD cruza por encima de la señal."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class MACDCrossUp(BaseSignalSource):

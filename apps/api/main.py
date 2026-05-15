@@ -9,14 +9,13 @@ v3: 16 tickers, candles históricas, selector config live
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -138,7 +137,7 @@ def _generate_experiment_yaml(req: TrainRequest) -> tuple[Path, str]:
 
 
 def _generate_backtest_yaml(req: BacktestRequest) -> tuple[Path, str]:
-    bt_name = req.name.strip() if req.name.strip() else f"bt_{'_'.join(req.tickers).lower()}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}"
+    bt_name = req.name.strip() if req.name.strip() else f"bt_{'_'.join(req.tickers).lower()}_{datetime.now(UTC).strftime('%Y%m%d_%H%M')}"
     g = req.guardrails
     config = {
         "backtest": {"name": bt_name, "description": f"Backtest UI — {req.test_start} a {req.test_end}"},
@@ -181,7 +180,7 @@ def _generate_backtest_yaml(req: BacktestRequest) -> tuple[Path, str]:
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
+    return {"status": "ok", "time": datetime.now(UTC).isoformat()}
 
 
 # ── Endpoints: Data ──────────────────────────────────────────────────────────
@@ -406,7 +405,7 @@ async def toggle_trading(body: TradingToggle):
     try:
         sb.table("config").update({
             "trading_enabled": body.enabled,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }).eq("id", 1).execute()
         status = "activado" if body.enabled else "desactivado"
         log.info(f"Trading {status}")
@@ -423,7 +422,7 @@ async def get_live_config():
     ensemble_path = ROOT / "config" / "live" / "ensemble.yaml"
     if not ensemble_path.exists():
         return {"config": None, "error": "ensemble.yaml no encontrado"}
-    with open(ensemble_path, "r", encoding="utf-8") as f:
+    with open(ensemble_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return {"config": config, "path": str(ensemble_path)}
 
@@ -574,7 +573,7 @@ async def latest_signals(ticker: str = "AAPL"):
 
 @app.get("/api/decisions/today")
 async def today_decisions(ticker: str = "AAPL"):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     resp = (
         sb.table("gold_decisions").select("ts,decision,score_final,ejecutada,motivo_rechazo")
         .eq("ticker", ticker).gte("ts", today).order("ts", desc=True).execute()

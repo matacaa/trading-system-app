@@ -72,7 +72,7 @@ class LightGBMModel(BaseModel):
         joblib.dump(self._model, path)
 
     @classmethod
-    def load(cls, path: str | Path, task: str = "classification") -> "LightGBMModel":
+    def load(cls, path: str | Path, task: str = "classification") -> LightGBMModel:
         instance = cls(task=task)
         instance._model = joblib.load(path)
         return instance

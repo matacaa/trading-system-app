@@ -18,7 +18,7 @@ import argparse
 import logging
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -26,8 +26,8 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from apps.ingestion_live.alpaca_prices import fetch_prices
 from apps.ingestion_live.alpaca_news import fetch_news
+from apps.ingestion_live.alpaca_prices import fetch_prices
 from shared.symbols import ALL_SYMBOLS
 
 log = logging.getLogger("ingestion")
@@ -69,7 +69,7 @@ def main():
     scheduler = BlockingScheduler(timezone="UTC")
     scheduler.add_job(
         run, trigger="interval", minutes=args.interval,
-        next_run_time=datetime.now(timezone.utc), max_instances=1, coalesce=True,
+        next_run_time=datetime.now(UTC), max_instances=1, coalesce=True,
     )
     log.info(f"Ingestion service — cada {args.interval} min")
     try:

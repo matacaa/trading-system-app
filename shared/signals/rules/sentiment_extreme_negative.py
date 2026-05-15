@@ -1,6 +1,8 @@
 """Sentimiento extremo negativo: FinBERT detecta noticia muy negativa."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class SentimentExtremeNegative(BaseSignalSource):

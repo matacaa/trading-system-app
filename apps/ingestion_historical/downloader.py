@@ -11,7 +11,7 @@ yfinance tiene límites por intervalo:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import yfinance as yf
@@ -29,7 +29,7 @@ def get_date_blocks(
     max_days = MAX_DAYS.get(interval, 7)
     block_days = min(days, max_days)
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     start = now - timedelta(days=days)
 
     blocks = []

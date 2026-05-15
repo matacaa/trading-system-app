@@ -1,6 +1,8 @@
 """News volume spike: número inusual de noticias sobre el ticker."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class NewsVolumeSpike(BaseSignalSource):

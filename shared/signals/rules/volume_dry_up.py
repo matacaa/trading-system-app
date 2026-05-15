@@ -1,6 +1,8 @@
 """Volume dry up: volumen se seca, posible ruptura inminente."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class VolumeDryUp(BaseSignalSource):

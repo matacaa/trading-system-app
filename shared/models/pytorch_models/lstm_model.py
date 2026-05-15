@@ -18,8 +18,8 @@ import torch
 import torch.nn as nn
 
 from shared.models.base import BaseModel
-from shared.models.registry import register_model
 from shared.models.pytorch_models.dataset import make_dataloaders
+from shared.models.registry import register_model
 
 log = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ class LSTMModel(BaseModel):
         )
 
     @classmethod
-    def load(cls, path: str | Path, task: str = "classification") -> "LSTMModel":
+    def load(cls, path: str | Path, task: str = "classification") -> LSTMModel:
         checkpoint = torch.load(path, map_location="cpu")
         instance = cls(
             task=checkpoint["task"],

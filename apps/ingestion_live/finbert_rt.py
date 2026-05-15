@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from shared.config import cfg
 from shared.db import query
@@ -54,7 +54,7 @@ def get_sentiment(tickers: list[str], hours: int = 24) -> dict[str, dict]:
     Returns:
         {"AAPL": {"label": "positive", "score": 0.82, "encoded": 1}, ...}
     """
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
     result: dict[str, dict] = {}
 
     try:

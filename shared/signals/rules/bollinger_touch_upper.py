@@ -1,6 +1,8 @@
 """Bollinger touch upper: precio toca o rompe la banda superior."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class BollingerTouchUpper(BaseSignalSource):

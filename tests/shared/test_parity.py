@@ -14,10 +14,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from shared.indicators import atr, bollinger, ema, log_returns, macd, rsi, vwap
-
 
 # ═════════════════════════════════════════════════════════════════════════════
 # 1. TESTS DE CORRECCIÓN — shared.indicators vs cálculo manual
@@ -42,7 +40,7 @@ class TestRSI:
         expected = 100 - (100 / (1 + rs))
 
         # Deben ser idénticos
-        valid = result.dropna() 
+        valid = result.dropna()
         expected_valid = expected[valid.index]
         np.testing.assert_allclose(valid.values, expected_valid.values, rtol=1e-10)
 

@@ -1,6 +1,8 @@
 """Volumen anómalo: volumen normalizado supera un múltiplo de la media."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class VolumeSpike(BaseSignalSource):

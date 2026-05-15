@@ -8,7 +8,7 @@ Resuelve F-28, F-41 del informe de Fase 2 (reset de contadores diarios en zona h
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytz
 
@@ -23,7 +23,7 @@ def now_et() -> datetime:
 
 def now_utc() -> datetime:
     """Hora actual en UTC."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def today_et() -> date:
@@ -39,7 +39,7 @@ def start_of_day_et_as_utc(d: date | None = None) -> datetime:
     if d is None:
         d = today_et()
     et_midnight = ET.localize(datetime.combine(d, datetime.min.time()))
-    return et_midnight.astimezone(timezone.utc)
+    return et_midnight.astimezone(UTC)
 
 
 def utc_isoformat(dt: datetime | None = None) -> str:
@@ -47,5 +47,5 @@ def utc_isoformat(dt: datetime | None = None) -> str:
     if dt is None:
         dt = now_utc()
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.isoformat()

@@ -18,9 +18,9 @@ import logging
 import numpy as np
 import pandas as pd
 
+from apps.ml_sandbox.config import ExperimentConfig
 from shared.db import sb
 from shared.models.base import BaseModel
-from apps.ml_sandbox.config import ExperimentConfig
 
 log = logging.getLogger(__name__)
 
@@ -34,9 +34,14 @@ def calc_metrics(
 ) -> dict[str, float]:
     """Calcula las métricas configuradas en el yaml."""
     from sklearn.metrics import (
-        accuracy_score, f1_score, precision_score,
-        recall_score, roc_auc_score,
-        mean_squared_error, mean_absolute_error, r2_score,
+        accuracy_score,
+        f1_score,
+        mean_absolute_error,
+        mean_squared_error,
+        precision_score,
+        r2_score,
+        recall_score,
+        roc_auc_score,
     )
 
     metrics = {}
@@ -220,7 +225,7 @@ def run_evaluate(
         sb.table("silver_model_registry").update(
             {"metrics_summary": json.dumps(merged_metrics), "status": "complete"}
         ).eq("experiment_name", cfg.experiment.name).eq("is_active", True).execute()
-        log.info(f"  Registry actualizado: status=complete, metrics guardadas")
+        log.info("  Registry actualizado: status=complete, metrics guardadas")
     except Exception as e:
         log.warning(f"No se pudo actualizar metrics_summary/status: {e}")
 

@@ -18,11 +18,10 @@ Diseñado para correr periódicamente (cada iteración del pipeline o cron).
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
-from shared.db import query, execute
-from shared.utils.time import utc_isoformat
 from apps.trading_engine.alpaca_trader import _get_trading_client
+from shared.db import execute, query
+from shared.utils.time import utc_isoformat
 
 log = logging.getLogger(__name__)
 

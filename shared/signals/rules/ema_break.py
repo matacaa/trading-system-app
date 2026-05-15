@@ -1,6 +1,8 @@
 """EMA break: precio rompe la EMA después de estar N velas por encima/debajo."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class EMABreak(BaseSignalSource):

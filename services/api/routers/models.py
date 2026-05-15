@@ -1,5 +1,6 @@
 """Endpoints de modelos ML."""
 from fastapi import APIRouter
+
 from shared.db import query
 from shared.models.registry import list_models as registry_list_models
 

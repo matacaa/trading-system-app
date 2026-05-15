@@ -1,6 +1,8 @@
 """Bollinger touch lower: precio toca o rompe la banda inferior."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class BollingerTouchLower(BaseSignalSource):

@@ -67,7 +67,7 @@ class XGBoostModel(BaseModel):
         joblib.dump(self._model, path)
 
     @classmethod
-    def load(cls, path: str | Path, task: str = "classification") -> "XGBoostModel":
+    def load(cls, path: str | Path, task: str = "classification") -> XGBoostModel:
         instance = cls(task=task)
         instance._model = joblib.load(path)
         return instance

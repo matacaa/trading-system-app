@@ -1,10 +1,10 @@
 """Endpoints de backtest."""
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+
 from shared.db import query
 
 log = logging.getLogger(__name__)
@@ -26,8 +26,9 @@ async def run_backtest(req: BacktestRequest):
     """Encola un backtest.
     TODO fase 4: encolar en Service Bus + cacheo inteligente.
     """
-    from apps.api.main import _generate_backtest_yaml, _run_pipeline
     import sys
+
+    from apps.api.main import _generate_backtest_yaml, _run_pipeline
     tmp, bt_name = _generate_backtest_yaml(req)
     result = _run_pipeline(
         [sys.executable, "-m", "apps.ml_sandbox.backtest", str(tmp)],

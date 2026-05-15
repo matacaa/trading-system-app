@@ -17,15 +17,15 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 
+from apps.ml_sandbox.config import ExperimentConfig
 from shared.db import sb
 from shared.models.base import BaseModel
 from shared.models.registry import get_model
-from apps.ml_sandbox.config import ExperimentConfig
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ def run_train(
     if cfg.output.save_model:
         ext = ".pt" if cfg.is_pytorch else ".pkl"
         # F-56: usar UTC para consistencia en nombres de fichero
-        date = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+        date = datetime.now(UTC).strftime("%Y%m%d_%H%M")
         file_path = cfg.models_dir / f"{cfg.experiment.name}_{date}{ext}"
         model.save(file_path)
         log.info(f"Modelo guardado en: {file_path}")

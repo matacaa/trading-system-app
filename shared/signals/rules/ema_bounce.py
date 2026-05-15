@@ -1,6 +1,8 @@
 """EMA bounce: precio toca la EMA desde arriba y rebota."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class EMABounce(BaseSignalSource):

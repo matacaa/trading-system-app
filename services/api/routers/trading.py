@@ -1,10 +1,11 @@
 """Endpoints de control de trading (activar/desactivar inversión)."""
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from shared.db import query_one, execute
+
+from shared.db import execute, query_one
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -25,7 +26,7 @@ async def toggle_trading(body: TradingToggle):
     try:
         execute(
             "UPDATE config SET trading_enabled = %s, updated_at = %s WHERE id = 1",
-            [body.enabled, datetime.now(timezone.utc).isoformat()],
+            [body.enabled, datetime.now(UTC).isoformat()],
         )
         status = "activado" if body.enabled else "desactivado"
         log.info(f"Trading {status}")

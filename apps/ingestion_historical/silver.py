@@ -18,14 +18,24 @@ Uso:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import pandas as pd
 
 from shared.config import cfg
 from shared.db import sb
-from shared.indicators import atr, bollinger, ema, enrich_sentiment, is_market_open, log_returns, macd, rsi, vwap
+from shared.indicators import (
+    atr,
+    bollinger,
+    ema,
+    enrich_sentiment,
+    is_market_open,
+    log_returns,
+    macd,
+    rsi,
+    vwap,
+)
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +51,7 @@ USEFUL_DAYS = 5
 def load_raw(ticker: str, interval: str) -> pd.DataFrame:
     """Carga 7 días de RAW para un ticker e intervalo."""
     table = RAW_TABLES[interval]
-    since = (datetime.now(tz=timezone.utc) - timedelta(days=WARMUP_DAYS + USEFUL_DAYS)).isoformat()
+    since = (datetime.now(tz=UTC) - timedelta(days=WARMUP_DAYS + USEFUL_DAYS)).isoformat()
 
     all_rows: list[dict] = []
     offset = 0
@@ -236,7 +246,7 @@ def run_silver(
     """Pipeline RAW → SILVER para los tickers e intervalos dados."""
     intervals = intervals or ["1m", "5m", "15m"]
     results: dict[str, dict] = {}
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=USEFUL_DAYS)
+    cutoff = datetime.now(tz=UTC) - timedelta(days=USEFUL_DAYS)
 
     for idx, ticker in enumerate(tickers, 1):
         log.info(f"[{idx}/{len(tickers)}] {ticker}")

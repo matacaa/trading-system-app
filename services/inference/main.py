@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from shared.inference import load_models, predict_ensemble
+from shared.inference import predict_ensemble
 
 log = logging.getLogger("inference")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")

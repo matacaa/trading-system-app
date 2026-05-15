@@ -1,6 +1,8 @@
 """Bollinger squeeze: ancho de bandas en mínimo histórico reciente."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class BollingerSqueeze(BaseSignalSource):

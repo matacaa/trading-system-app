@@ -1,6 +1,8 @@
 """ATR expansion: volatilidad creciente."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class ATRExpansion(BaseSignalSource):

@@ -1,6 +1,8 @@
 """RSI sobreventa: RSI cae por debajo de un umbral."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class RSIOversold(BaseSignalSource):

@@ -1,6 +1,8 @@
 """ATR contraction: volatilidad en mínimos."""
 import pandas as pd
+
 from shared.signals.base import BaseSignalSource, Signal, register_signal
+
 
 @register_signal
 class ATRContraction(BaseSignalSource):
