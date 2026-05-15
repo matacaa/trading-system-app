@@ -129,7 +129,7 @@ def predict_ensemble(
         df_hist: historial de velas anteriores (necesario para modelos pytorch)
 
     Returns:
-        (score_final, detalle_por_modelo, signals_para_supabase)
+        (score_final, detalle_por_modelo, signals_para_db)
     """
     ts = row.get("ts", datetime.now(timezone.utc).isoformat())
     ticker = row.get("ticker", "")

@@ -2,7 +2,7 @@
 silver_rt.py
 ────────────
 Calcula indicadores técnicos sobre las barras RT
-y los guarda en silver_features_rt en Supabase.
+y los guarda en silver_features_rt en PostgreSQL.
 
 CAMBIO CRÍTICO respecto al original:
     Todos los indicadores ahora vienen de shared.indicators,
@@ -114,7 +114,7 @@ def compute_silver_rt(
     Lee raw_ohlcv_rt, calcula indicadores y guarda en silver_features_rt.
 
     N-10: parámetro sentiment eliminado — enrich_sentiment consulta
-    Supabase directamente por barra (ventana 15min).
+    PostgreSQL directamente por barra (ventana 15min).
 
     Args:
         tickers:   lista de tickers

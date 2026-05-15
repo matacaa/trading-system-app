@@ -59,6 +59,7 @@ services:
     volumes:
       - ./shared:/app/shared
       - ./apps/trading_engine:/app/apps/trading_engine
+      - ./apps/ingestion_live:/app/apps/ingestion_live
       - ./config:/app/config
       - ./data/models:/app/data/models
     env_file: .env

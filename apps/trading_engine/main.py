@@ -11,7 +11,7 @@ Pipeline principal: orquesta el flujo completo cada X minutos.
     6. Genera predicciones por ticker (shared.inference)
     7. Evalúa guardarraíles y decide (shared.guardrails)
     8. Ejecuta órdenes en Alpaca paper
-    9. Guarda señales, decisiones, timings y logs en Supabase
+    9. Guarda señales, decisiones, timings y logs en PostgreSQL
 
 Uso:
     python -m apps.trading_engine.main

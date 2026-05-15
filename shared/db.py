@@ -21,6 +21,7 @@ Uso:
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import contextmanager
 from functools import lru_cache
 
@@ -31,6 +32,14 @@ import psycopg2.extras
 from shared.config import cfg
 
 log = logging.getLogger(__name__)
+
+# Errores transitorios de PostgreSQL que merecen retry
+_TRANSIENT_ERRORS = (
+    psycopg2.OperationalError,
+    psycopg2.InterfaceError,
+)
+_MAX_RETRIES = 3
+_BACKOFF_BASE = 0.5  # 0.5s, 1s, 2s
 
 
 @lru_cache(maxsize=1)
@@ -46,17 +55,38 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
 
 @contextmanager
 def get_conn():
-    """Context manager que obtiene y devuelve una conexión del pool."""
+    """Context manager que obtiene una conexión del pool con retry y backoff."""
     pool = _get_pool()
-    conn = pool.getconn()
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        pool.putconn(conn)
+    last_err = None
+    for attempt in range(_MAX_RETRIES):
+        conn = None
+        try:
+            conn = pool.getconn()
+            yield conn
+            conn.commit()
+            return
+        except _TRANSIENT_ERRORS as e:
+            last_err = e
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                pool.putconn(conn, close=True)
+                conn = None
+            wait = _BACKOFF_BASE * (2 ** attempt)
+            log.warning("DB transient error (attempt %d/%d), retry in %.1fs: %s",
+                        attempt + 1, _MAX_RETRIES, wait, e)
+            time.sleep(wait)
+        except Exception:
+            if conn is not None:
+                conn.rollback()
+                pool.putconn(conn)
+            raise
+        finally:
+            if conn is not None:
+                pool.putconn(conn)
+    raise last_err  # type: ignore[misc]
 
 
 def query(sql: str, params: list | tuple | None = None) -> list[dict]:

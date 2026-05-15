@@ -68,6 +68,3 @@ modelos:
 - activo: true
   experiment_name: aapl_xgboost_1m_v1
   peso: 0.2
-- activo: true
-  experiment_name: aapl_random_forest_1m_v1
-  peso: 0.15

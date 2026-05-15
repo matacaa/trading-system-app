@@ -32,7 +32,7 @@ def multiday_ohlcv():
 
     day1 = pd.date_range("2026-04-01 13:30", periods=390, freq="1min", tz="UTC")
     day2 = pd.date_range("2026-04-02 13:30", periods=390, freq="1min", tz="UTC")
-    dates = day1.append(day2)
+    dates = pd.DatetimeIndex(day1.tolist() + day2.tolist())
 
     close = 200 + np.cumsum(np.random.randn(780) * 0.15)
     close = np.maximum(close, 50)  # evitar precios negativos

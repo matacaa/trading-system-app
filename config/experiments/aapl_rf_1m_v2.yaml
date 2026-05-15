@@ -1,5 +1,5 @@
 experiment:
-  name: "aapl_rf_1m_v1"
+  name: "aapl_rf_1m_v2"
   task: "classification"
 
 model:

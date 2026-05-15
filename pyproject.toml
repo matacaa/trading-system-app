@@ -23,8 +23,8 @@ dependencies = [
     "pandas>=2.2",
     "scipy>=1.12",
 
-    # ─── Supabase / HTTP ──────────────────────────
-    "supabase>=2.3",
+    # ─── PostgreSQL / HTTP ───────────────────────
+    "psycopg2-binary>=2.9",
     "requests>=2.31",
     "httpx>=0.25",
 
@@ -76,7 +76,7 @@ yfinance = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["shared*", "apps*"]
+include = ["shared*", "apps*", "services*"]
 exclude = ["tests*", "data*"]
 
 [tool.ruff]

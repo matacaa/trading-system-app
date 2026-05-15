@@ -12,6 +12,7 @@ Uso:
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -38,9 +39,14 @@ log = logging.getLogger("api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
 app = FastAPI(title="Squawks ML API", version="4.0.0")
+
+# CORS: leer orígenes permitidos de env var, default restrictivo.
+# En desarrollo: CORS_ORIGINS=* en .env
+# En producción: CORS_ORIGINS=https://app.squawks.ml,https://squawks.ml
+_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Producción: dominios específicos
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

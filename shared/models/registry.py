@@ -119,7 +119,7 @@ def get_model(
     Instancia el modelo correcto según su nombre.
 
     1. Auto-descubre modelos si no se ha hecho aún
-    2. (Opcional) Verifica en silver_model_library de Supabase
+    2. (Opcional) Verifica en silver_model_library de PostgreSQL
     3. Combina default_params con params recibidos (params gana)
     4. Instancia la clase del modelo
 
@@ -127,7 +127,7 @@ def get_model(
         model_name:     nombre del modelo (xgboost, lstm, wavenet, etc.)
         task:           'classification' o 'regression'
         params:         hiperparámetros del yaml (prioridad sobre defaults)
-        check_library:  si True, consulta silver_model_library en Supabase
+        check_library:  si True, consulta silver_model_library en PostgreSQL
         **extra_kwargs: kwargs adicionales pasados al constructor
 
     Returns:
