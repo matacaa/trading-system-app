@@ -107,7 +107,7 @@ def generate_squawks(
             )
 
             # Escribir squawk
-            _save_squawk(
+            squawk_id = _save_squawk(
                 user_id=user_id,
                 ticker=ticker,
                 squawk_type=squawk_type,
@@ -124,6 +124,21 @@ def generate_squawks(
                 decision_ts=decision["ts"],
                 audio_locale=user_locale,
             )
+
+            # Generar audio TTS (no bloquea si falla)
+            if squawk_id and motivo_text:
+                try:
+                    from shared.tts import generate_audio
+
+                    audio_url = generate_audio(squawk_id, motivo_text, user_locale)
+                    if audio_url:
+                        execute(
+                            "UPDATE gold_squawks SET audio_url = %s WHERE id = %s",
+                            [audio_url, squawk_id],
+                        )
+                except Exception as e:
+                    log.warning("  TTS falló para squawk %s: %s", squawk_id, e)
+
             squawks_created += 1
 
         except Exception as e:
@@ -333,14 +348,17 @@ def _save_squawk(
     run_id: str,
     decision_ts: str,
     audio_locale: str,
-) -> None:
-    """Escribe un squawk en gold_squawks."""
-    execute(
+) -> str | None:
+    """Escribe un squawk en gold_squawks. Devuelve el id del squawk creado."""
+    from shared.db import query_one as _query_one
+
+    row = _query_one(
         """INSERT INTO gold_squawks
            (user_id, ticker, squawk_type, priority, score, decision,
             motivo, motivo_rechazo, guardrails_passed, guardrails_config,
             market_data, model_scores, run_id, decision_ts, audio_locale)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+           RETURNING id""",
         [
             user_id, ticker, squawk_type, priority, round(score, 2), decision,
             motivo, motivo_rechazo,
@@ -349,3 +367,4 @@ def _save_squawk(
             run_id, decision_ts, audio_locale,
         ],
     )
+    return str(row["id"]) if row else None
