@@ -28,7 +28,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Lint with ruff
-        run: ruff check shared/ apps/ tests/ || true
+        run: ruff check shared/ apps/ tests/ services/
 
       - name: Run tests
         run: |
