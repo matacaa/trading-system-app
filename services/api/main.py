@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from services.api.routers import (
+    auth,
     backtest,
     health,
     live,
@@ -52,17 +53,16 @@ app.add_middleware(
 )
 
 # ── Routers ───────────────────────────────────────────────────────
-app.include_router(health.router,   tags=["Health"])
-app.include_router(tickers.router,  prefix="/api", tags=["Data"])
-app.include_router(models.router,   prefix="/api", tags=["Models"])
-app.include_router(training.router, prefix="/api", tags=["Training"])
-app.include_router(backtest.router, prefix="/api", tags=["Backtest"])
-app.include_router(live.router,     prefix="/api", tags=["Live"])
-app.include_router(trading.router,  prefix="/api", tags=["Trading"])
-app.include_router(signals.router,  prefix="/api", tags=["Signals"])
-app.include_router(squawks.router,  prefix="/api", tags=["Squawks"])
-# TODO fase 2: app.include_router(auth.router, prefix="/auth", tags=["Auth"])
-# TODO fase 2: app.include_router(user.router, prefix="/api", tags=["User"])
+app.include_router(health.router,    tags=["Health"])
+app.include_router(auth.router,      tags=["Auth"])
+app.include_router(tickers.router,   prefix="/api", tags=["Data"])
+app.include_router(models.router,    prefix="/api", tags=["Models"])
+app.include_router(training.router,  prefix="/api", tags=["Training"])
+app.include_router(backtest.router,  prefix="/api", tags=["Backtest"])
+app.include_router(live.router,      prefix="/api", tags=["Live"])
+app.include_router(trading.router,   prefix="/api", tags=["Trading"])
+app.include_router(signals.router,   prefix="/api", tags=["Signals"])
+app.include_router(squawks.router,   prefix="/api", tags=["Squawks"])
 
 
 if __name__ == "__main__":

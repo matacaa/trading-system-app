@@ -28,6 +28,11 @@ dependencies = [
     "requests>=2.31",
     "httpx>=0.25",
 
+    # ─── Auth ──────────────────────────────────────
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7",
+    "pydantic[email]>=2.5",
+
     # ─── Broker ────────────────────────────────────
     "alpaca-py>=0.20",
 
@@ -90,6 +95,8 @@ ignore = ["E501", "N803", "N806"]  # N803/N806: X, X_train, X_test son convenci�
 [tool.ruff.lint.per-file-ignores]
 "apps/api/main.py" = ["E402"]        # Legacy: sys.path antes de imports
 "services/api/main.py" = ["E402"]    # Routers se importan tras app = FastAPI()
+"services/api/routers/*.py" = ["B008"]  # Depends() en default args es patrón estándar FastAPI
+"services/api/auth/*.py" = ["B008"]     # Idem
 "services/decision/main.py" = ["E402"]
 "services/features/main.py" = ["E402"]
 "services/inference/main.py" = ["E402"]

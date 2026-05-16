@@ -1,13 +1,16 @@
 """Endpoints de modelos ML."""
-from fastapi import APIRouter
 
+from fastapi import APIRouter, Depends
+
+from services.api.auth.dependencies import get_current_user
 from shared.db import query
 from shared.models.registry import list_models as registry_list_models
 
 router = APIRouter()
 
+
 @router.get("/models")
-async def get_models(ticker: str = ""):
+async def get_models(ticker: str = "", _user: dict = Depends(get_current_user)):
     """Modelos entrenados registrados en PostgreSQL."""
     if ticker:
         rows = query(
@@ -24,7 +27,8 @@ async def get_models(ticker: str = ""):
         )
     return {"models": rows}
 
+
 @router.get("/models/available")
-async def available_models():
+async def available_models(_user: dict = Depends(get_current_user)):
     """Modelos disponibles en el código (auto-descubiertos por el registry)."""
     return {"models": registry_list_models()}

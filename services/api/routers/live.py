@@ -1,16 +1,19 @@
 """Endpoints del pipeline live."""
+
 import logging
 from typing import Any
 
 import yaml
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel as PydanticModel
 
+from services.api.auth.dependencies import get_current_user
 from shared.config import cfg as app_cfg
 from shared.db import query, query_one
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
 
 class LiveEnsembleConfig(PydanticModel):
     tickers: list[str] = ["AAPL"]
@@ -19,8 +22,9 @@ class LiveEnsembleConfig(PydanticModel):
     guardrails: dict[str, Any] = {}
     capital: dict[str, Any] = {}
 
+
 @router.get("/live/status")
-async def live_status():
+async def live_status(_user: dict = Depends(get_current_user)):
     last_log = query(
         "SELECT run_at, status, duration_s, errores FROM gold_logs ORDER BY run_at DESC LIMIT 1"
     )
@@ -36,8 +40,9 @@ async def live_status():
         "last_run": last_log[0] if last_log else None,
     }
 
+
 @router.get("/live/config")
-async def get_live_config():
+async def get_live_config(_user: dict = Depends(get_current_user)):
     ensemble_path = app_cfg.config_dir / "live" / "ensemble.yaml"
     if not ensemble_path.exists():
         return {"config": None, "error": "ensemble.yaml no encontrado"}
@@ -45,8 +50,9 @@ async def get_live_config():
         config = yaml.safe_load(f)
     return {"config": config}
 
+
 @router.post("/live/config")
-async def set_live_config(body: LiveEnsembleConfig):
+async def set_live_config(body: LiveEnsembleConfig, _user: dict = Depends(get_current_user)):
     ensemble_path = app_cfg.config_dir / "live" / "ensemble.yaml"
     config = {
         "data": {"tickers": body.tickers, "context_tickers": body.context_tickers, "timeframe": "1m"},

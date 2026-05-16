@@ -1,0 +1,353 @@
+From f3080f76c9d9aa97955c6e609a12120801a76080 Mon Sep 17 00:00:00 2001
+From: Audit Bot <audit@squawks.ml>
+Date: Sat, 16 May 2026 06:44:12 +0000
+Subject: [PATCH 1/2] Fase 3c Parte 4: ruff 0 errores, lint bloqueante, tests
+ ampliados a 32
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- pyproject.toml: N803/N806 suprimidos (convención ML), E402 per-file-ignores
+- 17 archivos: W293, F841, B904, F821, F401, B007, B905, C401 arreglados
+- ci.yml: lint bloqueante (|| true eliminado), scope ampliado a services/
+- ci.yml: test_parity añadido (excluye TestSilverParity) → 32 tests total
+- reconciliation.py: TYPE_CHECKING import para TradingClient
+- signals/__init__.py: SIGNAL_REGISTRY añadido a __all__
+---
+ .github/workflows/ci.yml              |  4 +++-
+ apps/api/main.py                      |  2 +-
+ apps/ingestion_historical/finbert.py  |  2 +-
+ apps/ingestion_live/main.py           |  3 +--
+ apps/ml_sandbox/backtest.py           |  4 ++--
+ apps/ml_sandbox/data/loader.py        |  4 ++--
+ apps/trading_engine/main.py           |  2 +-
+ apps/trading_engine/reconciliation.py |  4 ++++
+ pyproject.toml                        | 10 +++++++++-
+ services/api/routers/trading.py       |  2 +-
+ services/features/main.py             |  2 +-
+ shared/config.py                      |  2 +-
+ shared/indicators.py                  |  8 ++++----
+ shared/signals/__init__.py            |  2 +-
+ shared/utils/logging.py               |  2 +-
+ shared/utils/time.py                  |  2 +-
+ tests/test_all_services.py            |  2 +-
+ 17 files changed, 35 insertions(+), 22 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 4ed965f..578e818 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -31,7 +31,9 @@ jobs:
+         run: ruff check shared/ apps/ tests/ || true
+ 
+       - name: Run tests
+-        run: pytest tests/shared/test_indicators.py tests/shared/test_models.py -v --tb=short
++        run: |
++          pytest tests/shared/test_indicators.py tests/shared/test_models.py -v --tb=short
++          pytest tests/shared/test_parity.py --deselect tests/shared/test_parity.py::TestSilverParity -v --tb=short
+         env:
+           # Tests unitarios (indicators, models) no necesitan DB ni Alpaca
+           DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+diff --git a/apps/api/main.py b/apps/api/main.py
+index b21aed8..90f6b19 100644
+--- a/apps/api/main.py
++++ b/apps/api/main.py
+@@ -411,7 +411,7 @@ async def toggle_trading(body: TradingToggle):
+         log.info(f"Trading {status}")
+         return {"trading_enabled": body.enabled, "status": status}
+     except Exception as e:
+-        raise HTTPException(500, f"Error: {e}")
++        raise HTTPException(500, f"Error: {e}") from e
+ 
+ 
+ # ── Endpoints: Live Config (selector de ensemble) ───────────────────────────
+diff --git a/apps/ingestion_historical/finbert.py b/apps/ingestion_historical/finbert.py
+index b1a957e..d7c36c5 100644
+--- a/apps/ingestion_historical/finbert.py
++++ b/apps/ingestion_historical/finbert.py
+@@ -124,7 +124,7 @@ def run_finbert() -> int:
+     sentiments = analyze_sentiment(texts, model)
+ 
+     rows = []
+-    for r, s in zip(raw_news, sentiments):
++    for r, s in zip(raw_news, sentiments, strict=False):
+         rows.append({
+             "published_at": r["published_at"],
+             "title": r["title"],
+diff --git a/apps/ingestion_live/main.py b/apps/ingestion_live/main.py
+index 14c5152..35c10f4 100644
+--- a/apps/ingestion_live/main.py
++++ b/apps/ingestion_live/main.py
+@@ -47,7 +47,6 @@ def main():
+     log.info(f"  Precios: {time.time() - t0:.1f}s")
+ 
+     # 2-3. Noticias + Sentiment
+-    sentiment = None
+     if not args.skip_news:
+         log.info("Descargando noticias RT...")
+         t0 = time.time()
+@@ -56,7 +55,7 @@ def main():
+ 
+         log.info("Calculando sentiment...")
+         t0 = time.time()
+-        sentiment = get_sentiment(tickers=args.tickers, hours=24)
++        get_sentiment(tickers=args.tickers, hours=24)
+         log.info(f"  Sentiment: {time.time() - t0:.1f}s")
+ 
+     # 4. Silver (N-10: sentiment se consulta internamente via enrich_sentiment)
+diff --git a/apps/ml_sandbox/backtest.py b/apps/ml_sandbox/backtest.py
+index 4b60074..bf79953 100644
+--- a/apps/ml_sandbox/backtest.py
++++ b/apps/ml_sandbox/backtest.py
+@@ -173,7 +173,7 @@ def run_backtest_ticker(
+ 
+     df_ticker = df[df["ticker"] == ticker].sort_values("ts").reset_index(drop=True)
+ 
+-    for idx, row in df_ticker.iterrows():
++    for _idx, row in df_ticker.iterrows():
+         ts = row["ts"]
+         dia = ts.date()
+ 
+@@ -342,7 +342,7 @@ def run_backtest_ticker(
+     if retornos and np.std(retornos) > 0:
+         # F-01: anualización correcta para intraday.
+         # n_trades / n_trading_days = trades por día. Anualizamos con sqrt(252 * trades_por_día).
+-        n_days = max(1, len(set(t.get("ts_entrada", "")[:10] for t in trades_cerrados)))
++        n_days = max(1, len({t.get("ts_entrada", "")[:10] for t in trades_cerrados}))
+         trades_per_day = len(retornos) / n_days if n_days > 0 else 1
+         annualization_factor = np.sqrt(252 * trades_per_day)
+         sharpe = round(np.mean(retornos) / np.std(retornos) * annualization_factor, 2)
+diff --git a/apps/ml_sandbox/data/loader.py b/apps/ml_sandbox/data/loader.py
+index fe24115..d269405 100644
+--- a/apps/ml_sandbox/data/loader.py
++++ b/apps/ml_sandbox/data/loader.py
+@@ -40,7 +40,7 @@ def load_data(cfg: ExperimentConfig) -> pd.DataFrame:
+ 
+ def _load_from_silver(cfg: ExperimentConfig) -> pd.DataFrame:
+     """Carga datos desde silver_features en Supabase.
+-    
++
+     Si cfg.data.context_tickers está definido, carga también las features
+     de esos tickers y las une por timestamp con prefijo {ticker}_.
+     El modelo puede así usar contexto de mercado (ej: GLD_rsi_14, MSFT_returns_5).
+@@ -202,7 +202,7 @@ def _load_from_tensor(cfg: ExperimentConfig) -> pd.DataFrame:
+ 
+     # F-101: vectorizado con numpy en vez de triple loop Python
+     rows = []
+-    for t_idx, ticker in zip(ticker_indices, cfg.data.tickers):
++    for t_idx, ticker in zip(ticker_indices, cfg.data.tickers, strict=False):
+         ticker_data = tensor_filtered[:, t_idx, :]  # (n_timestamps, n_features)
+         ticker_df = pd.DataFrame(ticker_data, columns=column_names)
+         ticker_df["ts"] = ts_filtered
+diff --git a/apps/trading_engine/main.py b/apps/trading_engine/main.py
+index 390c05d..546c97b 100644
+--- a/apps/trading_engine/main.py
++++ b/apps/trading_engine/main.py
+@@ -132,7 +132,7 @@ def run(cfg: dict, modelos: list) -> None:
+         # 3. Calcular sentiment
+         log.info("-- Calculando sentiment...")
+         t0 = time.time()
+-        sentiment = get_sentiment(tickers=all_tickers, hours=24)
++        get_sentiment(tickers=all_tickers, hours=24)
+         save_timing("sentiment", time.time() - t0, run_id=run_id)
+ 
+         # 4. Calcular indicadores silver RT (incluye context_tickers)
+diff --git a/apps/trading_engine/reconciliation.py b/apps/trading_engine/reconciliation.py
+index 895134a..68924bf 100644
+--- a/apps/trading_engine/reconciliation.py
++++ b/apps/trading_engine/reconciliation.py
+@@ -18,8 +18,12 @@ Diseñado para correr periódicamente (cada iteración del pipeline o cron).
+ from __future__ import annotations
+ 
+ import logging
++from typing import TYPE_CHECKING
+ 
+ from apps.trading_engine.alpaca_trader import _get_trading_client
++
++if TYPE_CHECKING:
++    from alpaca.trading import TradingClient
+ from shared.db import execute, query
+ from shared.utils.time import utc_isoformat
+ 
+diff --git a/pyproject.toml b/pyproject.toml
+index a9e4d05..1875903 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -85,7 +85,15 @@ target-version = "py311"
+ 
+ [tool.ruff.lint]
+ select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+-ignore = ["E501"]
++ignore = ["E501", "N803", "N806"]  # N803/N806: X, X_train, X_test son convención ML
++
++[tool.ruff.lint.per-file-ignores]
++"apps/api/main.py" = ["E402"]        # Legacy: sys.path antes de imports
++"services/api/main.py" = ["E402"]    # Routers se importan tras app = FastAPI()
++"services/decision/main.py" = ["E402"]
++"services/features/main.py" = ["E402"]
++"services/inference/main.py" = ["E402"]
++"services/ingestion/main.py" = ["E402"]
+ 
+ [tool.pytest.ini_options]
+ testpaths = ["tests"]
+diff --git a/services/api/routers/trading.py b/services/api/routers/trading.py
+index a92f7d4..b7e83a2 100644
+--- a/services/api/routers/trading.py
++++ b/services/api/routers/trading.py
+@@ -32,7 +32,7 @@ async def toggle_trading(body: TradingToggle):
+         log.info(f"Trading {status}")
+         return {"trading_enabled": body.enabled, "status": status}
+     except Exception as e:
+-        raise HTTPException(500, f"Error: {e}")
++        raise HTTPException(500, f"Error: {e}") from e
+ 
+ @router.get("/portfolio")
+ async def get_portfolio():
+diff --git a/services/features/main.py b/services/features/main.py
+index 207659a..1a5db66 100644
+--- a/services/features/main.py
++++ b/services/features/main.py
+@@ -42,7 +42,7 @@ def run(tickers: list[str] | None = None, timeframe: str = "1m"):
+     log.info(f"Features: {len(tickers)} tickers...")
+ 
+     try:
+-        sentiment = get_sentiment(tickers=tickers, hours=24)
++        get_sentiment(tickers=tickers, hours=24)
+         log.info(f"  Sentiment OK ({time.time()-start:.1f}s)")
+     except Exception as e:
+         log.error(f"  Error sentiment: {e}")
+diff --git a/shared/config.py b/shared/config.py
+index 6f5a022..3be6418 100644
+--- a/shared/config.py
++++ b/shared/config.py
+@@ -6,7 +6,7 @@ Lee .env una sola vez y expone un objeto `cfg` singleton.
+ 
+ Uso:
+     from shared.config import cfg
+-    
++
+     dsn = cfg.database_url
+     models_dir = cfg.models_dir
+ """
+diff --git a/shared/indicators.py b/shared/indicators.py
+index 78aea2e..10ed5ce 100644
+--- a/shared/indicators.py
++++ b/shared/indicators.py
+@@ -34,7 +34,7 @@ def ema(series: pd.Series, period: int) -> pd.Series:
+ 
+ def rsi(close: pd.Series, period: int = 14) -> pd.Series:
+     """RSI Wilder (EMA-based). Estándar de la literatura técnica.
+-    
++
+     Tanto silver.py como silver_rt.py usan esta función (paridad resuelta).
+     """
+     delta = close.diff()
+@@ -71,7 +71,7 @@ def bollinger(
+ 
+ def vwap(df: pd.DataFrame) -> pd.Series:
+     """VWAP con reset diario (groupby por fecha).
+-    
++
+     Tanto silver.py como silver_rt.py usan esta función (paridad resuelta).
+     df debe tener columnas: high, low, close, volume, y un índice datetime o columna 'ts'.
+     """
+@@ -91,7 +91,7 @@ def vwap(df: pd.DataFrame) -> pd.Series:
+ 
+ def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+     """Average True Range Wilder (EMA-based).
+-    
++
+     Tanto silver.py como silver_rt.py usan esta función (paridad resuelta).
+     df debe tener columnas: high, low, close.
+     """
+@@ -111,7 +111,7 @@ def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+ 
+ def log_returns(close: pd.Series, period: int = 1) -> pd.Series:
+     """Log returns. np.log(close / shift(period)).
+-    
++
+     Tanto silver.py como silver_rt.py usan esta función (paridad resuelta).
+     """
+     return np.log(close / close.shift(period))
+diff --git a/shared/signals/__init__.py b/shared/signals/__init__.py
+index eaae9be..b0d3797 100644
+--- a/shared/signals/__init__.py
++++ b/shared/signals/__init__.py
+@@ -8,4 +8,4 @@ from shared.signals.base import (
+     register_signal,
+ )
+ 
+-__all__ = ["BaseSignalSource", "Signal", "register_signal", "list_signals", "get_signal"]
++__all__ = ["SIGNAL_REGISTRY", "BaseSignalSource", "Signal", "register_signal", "list_signals", "get_signal"]
+diff --git a/shared/utils/logging.py b/shared/utils/logging.py
+index 94ef8da..e767b51 100644
+--- a/shared/utils/logging.py
++++ b/shared/utils/logging.py
+@@ -17,7 +17,7 @@ def setup_logging(
+     app_name: str = "trading-system",
+ ) -> None:
+     """Configura logging con formato común.
+-    
++
+     Args:
+         level: nivel mínimo (DEBUG, INFO, WARNING, ERROR)
+         log_file: ruta opcional a fichero de log
+diff --git a/shared/utils/time.py b/shared/utils/time.py
+index ffb4007..5fa29ca 100644
+--- a/shared/utils/time.py
++++ b/shared/utils/time.py
+@@ -33,7 +33,7 @@ def today_et() -> date:
+ 
+ def start_of_day_et_as_utc(d: date | None = None) -> datetime:
+     """Medianoche ET del día dado, expresada en UTC.
+-    
++
+     Útil para queries tipo "trades de hoy" donde hoy significa en ET.
+     """
+     if d is None:
+diff --git a/tests/test_all_services.py b/tests/test_all_services.py
+index ee69359..76bf1da 100644
+--- a/tests/test_all_services.py
++++ b/tests/test_all_services.py
+@@ -644,7 +644,7 @@ total_time = sum(t for _, _, _, _, t in results)
+ 
+ # Agrupar por servicio
+ services = {}
+-for svc, test, ok, err, t in results:
++for svc, test, ok, err, _t in results:
+     if svc not in services:
+         services[svc] = {"passed": 0, "failed": 0, "errors": []}
+     if ok:
+-- 
+2.43.0
+
+
+From 05d9decbc76e93cf4750a058aab425cf9b033566 Mon Sep 17 00:00:00 2001
+From: Audit Bot <audit@squawks.ml>
+Date: Sat, 16 May 2026 07:04:14 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?CI:=20lint=20bloqueante=20+=20scope=20servi?=
+ =?UTF-8?q?ces/=20(scripts/=20excluido=20=E2=80=94=20legacy=20Supabase)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .github/workflows/ci.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 578e818..fd6a3a9 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -28,7 +28,7 @@ jobs:
+           pip install -e ".[dev]"
+ 
+       - name: Lint with ruff
+-        run: ruff check shared/ apps/ tests/ || true
++        run: ruff check shared/ apps/ tests/ services/
+ 
+       - name: Run tests
+         run: |
+-- 
+2.43.0
+

@@ -1,13 +1,16 @@
 """Endpoints de tickers y velas."""
-from fastapi import APIRouter
 
+from fastapi import APIRouter, Depends
+
+from services.api.auth.dependencies import get_current_user
 from shared.db import query
 from shared.symbols import ALL_SYMBOLS
 
 router = APIRouter()
 
+
 @router.get("/tickers")
-async def list_tickers():
+async def list_tickers(_user: dict = Depends(get_current_user)):
     tickers_with_data: set[str] = set()
     for ticker in ALL_SYMBOLS:
         try:
@@ -24,8 +27,13 @@ async def list_tickers():
         for t, n in ALL_SYMBOLS.items()
     ]}
 
+
 @router.get("/candles")
-async def get_candles(ticker: str = "AAPL", limit: int = 200):
+async def get_candles(
+    ticker: str = "AAPL",
+    limit: int = 200,
+    _user: dict = Depends(get_current_user),
+):
     rows = query(
         """SELECT ts, open, high, low, close, volume
            FROM raw_ohlcv_rt WHERE ticker = %s ORDER BY ts DESC LIMIT %s""",
@@ -34,12 +42,17 @@ async def get_candles(ticker: str = "AAPL", limit: int = 200):
     candles = sorted(rows, key=lambda x: x["ts"])
     return {"candles": candles, "ticker": ticker}
 
+
 @router.get("/candles/historical")
 async def get_candles_historical(
-    ticker: str = "AAPL", timeframe: str = "1m",
-    start: str = "", end: str = "", limit: int = 500,
+    ticker: str = "AAPL",
+    timeframe: str = "1m",
+    start: str = "",
+    end: str = "",
+    limit: int = 500,
+    _user: dict = Depends(get_current_user),
 ):
-    table = f"raw_ohlcv_{timeframe}" if timeframe in ("1m","5m","15m") else "raw_ohlcv_1m"
+    table = f"raw_ohlcv_{timeframe}" if timeframe in ("1m", "5m", "15m") else "raw_ohlcv_1m"
     conditions = ["ticker = %s"]
     params: list = [ticker]
     if start:

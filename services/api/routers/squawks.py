@@ -1,18 +1,23 @@
 """Endpoints de squawks (alertas).
-TODO fase 3: implementar cuando el squawk engine esté listo.
+TODO fase 5: implementar cuando el squawk engine esté listo.
 """
-from fastapi import APIRouter
+
+from fastapi import APIRouter, Depends
+
+from services.api.auth.dependencies import get_current_user
 
 router = APIRouter()
 
+
 @router.get("/squawks")
-async def get_squawks(limit: int = 50):
+async def get_squawks(limit: int = 50, user: dict = Depends(get_current_user)):
     """Feed de squawks paginado.
-    TODO: leer de gold_squawks con user_id.
+    TODO fase 5: leer de gold_squawks con user_id.
     """
-    return {"squawks": [], "message": "Squawk service not yet implemented"}
+    return {"squawks": [], "user_id": user["id"], "message": "Squawk service not yet implemented"}
+
 
 @router.get("/squawks/stats")
-async def squawk_stats():
+async def squawk_stats(_user: dict = Depends(get_current_user)):
     """Resumen del día."""
     return {"total": 0, "by_priority": {}, "message": "Not yet implemented"}

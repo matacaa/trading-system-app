@@ -1,14 +1,17 @@
 """Endpoints de señales, decisiones y trades."""
+
 from datetime import UTC, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from services.api.auth.dependencies import get_current_user
 from shared.db import query
 
 router = APIRouter()
 
+
 @router.get("/signals/latest")
-async def latest_signals(ticker: str = "AAPL"):
+async def latest_signals(ticker: str = "AAPL", _user: dict = Depends(get_current_user)):
     rows = query(
         """SELECT ts, ticker, experiment_name, y_pred, y_prob, score, run_at
            FROM gold_signals WHERE ticker = %s ORDER BY run_at DESC LIMIT 30""",
@@ -19,8 +22,9 @@ async def latest_signals(ticker: str = "AAPL"):
     latest_run = rows[0]["run_at"]
     return {"signals": [s for s in rows if s["run_at"] == latest_run], "run_at": latest_run}
 
+
 @router.get("/decisions/today")
-async def today_decisions(ticker: str = "AAPL"):
+async def today_decisions(ticker: str = "AAPL", _user: dict = Depends(get_current_user)):
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     rows = query(
         """SELECT ts, decision, score_final, ejecutada, motivo_rechazo
@@ -29,8 +33,13 @@ async def today_decisions(ticker: str = "AAPL"):
     )
     return {"decisions": rows}
 
+
 @router.get("/trades")
-async def get_trades(ticker: str = "AAPL", limit: int = 20):
+async def get_trades(
+    ticker: str = "AAPL",
+    limit: int = 20,
+    _user: dict = Depends(get_current_user),
+):
     rows = query(
         """SELECT ticker, ts_entrada, precio_entrada, ts_salida, precio_salida,
                   pnl, pnl_pct, status, motivo_salida, qty

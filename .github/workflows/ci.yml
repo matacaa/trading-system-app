@@ -40,3 +40,4 @@ jobs:
           ALPACA_API_KEY: "placeholder"
           ALPACA_SECRET_KEY: "placeholder"
           HUGGINGFACE_TOKEN: "placeholder"
+          JWT_SECRET_KEY: "ci-test-secret-key-not-for-production-use-only"
