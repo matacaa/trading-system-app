@@ -33,7 +33,7 @@ def today_et() -> date:
 
 def start_of_day_et_as_utc(d: date | None = None) -> datetime:
     """Medianoche ET del día dado, expresada en UTC.
-    
+
     Útil para queries tipo "trades de hoy" donde hoy significa en ET.
     """
     if d is None:

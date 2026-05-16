@@ -173,7 +173,7 @@ def run_backtest_ticker(
 
     df_ticker = df[df["ticker"] == ticker].sort_values("ts").reset_index(drop=True)
 
-    for idx, row in df_ticker.iterrows():
+    for _idx, row in df_ticker.iterrows():
         ts = row["ts"]
         dia = ts.date()
 
@@ -342,7 +342,7 @@ def run_backtest_ticker(
     if retornos and np.std(retornos) > 0:
         # F-01: anualización correcta para intraday.
         # n_trades / n_trading_days = trades por día. Anualizamos con sqrt(252 * trades_por_día).
-        n_days = max(1, len(set(t.get("ts_entrada", "")[:10] for t in trades_cerrados)))
+        n_days = max(1, len({t.get("ts_entrada", "")[:10] for t in trades_cerrados}))
         trades_per_day = len(retornos) / n_days if n_days > 0 else 1
         annualization_factor = np.sqrt(252 * trades_per_day)
         sharpe = round(np.mean(retornos) / np.std(retornos) * annualization_factor, 2)

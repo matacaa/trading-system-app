@@ -32,7 +32,7 @@ async def toggle_trading(body: TradingToggle):
         log.info(f"Trading {status}")
         return {"trading_enabled": body.enabled, "status": status}
     except Exception as e:
-        raise HTTPException(500, f"Error: {e}")
+        raise HTTPException(500, f"Error: {e}") from e
 
 @router.get("/portfolio")
 async def get_portfolio():

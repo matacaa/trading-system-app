@@ -31,7 +31,9 @@ jobs:
         run: ruff check shared/ apps/ tests/ || true
 
       - name: Run tests
-        run: pytest tests/shared/test_indicators.py tests/shared/test_models.py -v --tb=short
+        run: |
+          pytest tests/shared/test_indicators.py tests/shared/test_models.py -v --tb=short
+          pytest tests/shared/test_parity.py --deselect tests/shared/test_parity.py::TestSilverParity -v --tb=short
         env:
           # Tests unitarios (indicators, models) no necesitan DB ni Alpaca
           DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"

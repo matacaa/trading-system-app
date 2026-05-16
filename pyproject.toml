@@ -85,7 +85,15 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
-ignore = ["E501"]
+ignore = ["E501", "N803", "N806"]  # N803/N806: X, X_train, X_test son convención ML
+
+[tool.ruff.lint.per-file-ignores]
+"apps/api/main.py" = ["E402"]        # Legacy: sys.path antes de imports
+"services/api/main.py" = ["E402"]    # Routers se importan tras app = FastAPI()
+"services/decision/main.py" = ["E402"]
+"services/features/main.py" = ["E402"]
+"services/inference/main.py" = ["E402"]
+"services/ingestion/main.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

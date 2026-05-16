@@ -18,8 +18,12 @@ Diseñado para correr periódicamente (cada iteración del pipeline o cron).
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from apps.trading_engine.alpaca_trader import _get_trading_client
+
+if TYPE_CHECKING:
+    from alpaca.trading import TradingClient
 from shared.db import execute, query
 from shared.utils.time import utc_isoformat
 

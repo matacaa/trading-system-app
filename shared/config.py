@@ -6,7 +6,7 @@ Lee .env una sola vez y expone un objeto `cfg` singleton.
 
 Uso:
     from shared.config import cfg
-    
+
     dsn = cfg.database_url
     models_dir = cfg.models_dir
 """

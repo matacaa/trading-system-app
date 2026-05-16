@@ -644,7 +644,7 @@ total_time = sum(t for _, _, _, _, t in results)
 
 # Agrupar por servicio
 services = {}
-for svc, test, ok, err, t in results:
+for svc, test, ok, err, _t in results:
     if svc not in services:
         services[svc] = {"passed": 0, "failed": 0, "errors": []}
     if ok:

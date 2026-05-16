@@ -17,7 +17,7 @@ def setup_logging(
     app_name: str = "trading-system",
 ) -> None:
     """Configura logging con formato común.
-    
+
     Args:
         level: nivel mínimo (DEBUG, INFO, WARNING, ERROR)
         log_file: ruta opcional a fichero de log

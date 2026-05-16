@@ -34,7 +34,7 @@ def ema(series: pd.Series, period: int) -> pd.Series:
 
 def rsi(close: pd.Series, period: int = 14) -> pd.Series:
     """RSI Wilder (EMA-based). Estándar de la literatura técnica.
-    
+
     Tanto silver.py como silver_rt.py usan esta función (paridad resuelta).
     """
     delta = close.diff()
@@ -71,7 +71,7 @@ def bollinger(
 
 def vwap(df: pd.DataFrame) -> pd.Series:
     """VWAP con reset diario (groupby por fecha).
-    
+
     Tanto silver.py como silver_rt.py usan esta función (paridad resuelta).
     df debe tener columnas: high, low, close, volume, y un índice datetime o columna 'ts'.
     """
@@ -91,7 +91,7 @@ def vwap(df: pd.DataFrame) -> pd.Series:
 
 def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """Average True Range Wilder (EMA-based).
-    
+
     Tanto silver.py como silver_rt.py usan esta función (paridad resuelta).
     df debe tener columnas: high, low, close.
     """
@@ -111,7 +111,7 @@ def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 def log_returns(close: pd.Series, period: int = 1) -> pd.Series:
     """Log returns. np.log(close / shift(period)).
-    
+
     Tanto silver.py como silver_rt.py usan esta función (paridad resuelta).
     """
     return np.log(close / close.shift(period))

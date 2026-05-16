@@ -47,7 +47,6 @@ def main():
     log.info(f"  Precios: {time.time() - t0:.1f}s")
 
     # 2-3. Noticias + Sentiment
-    sentiment = None
     if not args.skip_news:
         log.info("Descargando noticias RT...")
         t0 = time.time()
@@ -56,7 +55,7 @@ def main():
 
         log.info("Calculando sentiment...")
         t0 = time.time()
-        sentiment = get_sentiment(tickers=args.tickers, hours=24)
+        get_sentiment(tickers=args.tickers, hours=24)
         log.info(f"  Sentiment: {time.time() - t0:.1f}s")
 
     # 4. Silver (N-10: sentiment se consulta internamente via enrich_sentiment)

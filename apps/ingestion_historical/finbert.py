@@ -124,7 +124,7 @@ def run_finbert() -> int:
     sentiments = analyze_sentiment(texts, model)
 
     rows = []
-    for r, s in zip(raw_news, sentiments):
+    for r, s in zip(raw_news, sentiments, strict=False):
         rows.append({
             "published_at": r["published_at"],
             "title": r["title"],

@@ -42,7 +42,7 @@ def run(tickers: list[str] | None = None, timeframe: str = "1m"):
     log.info(f"Features: {len(tickers)} tickers...")
 
     try:
-        sentiment = get_sentiment(tickers=tickers, hours=24)
+        get_sentiment(tickers=tickers, hours=24)
         log.info(f"  Sentiment OK ({time.time()-start:.1f}s)")
     except Exception as e:
         log.error(f"  Error sentiment: {e}")

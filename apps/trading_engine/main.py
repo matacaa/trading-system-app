@@ -132,7 +132,7 @@ def run(cfg: dict, modelos: list) -> None:
         # 3. Calcular sentiment
         log.info("-- Calculando sentiment...")
         t0 = time.time()
-        sentiment = get_sentiment(tickers=all_tickers, hours=24)
+        get_sentiment(tickers=all_tickers, hours=24)
         save_timing("sentiment", time.time() - t0, run_id=run_id)
 
         # 4. Calcular indicadores silver RT (incluye context_tickers)

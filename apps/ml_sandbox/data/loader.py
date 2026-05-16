@@ -40,7 +40,7 @@ def load_data(cfg: ExperimentConfig) -> pd.DataFrame:
 
 def _load_from_silver(cfg: ExperimentConfig) -> pd.DataFrame:
     """Carga datos desde silver_features en Supabase.
-    
+
     Si cfg.data.context_tickers está definido, carga también las features
     de esos tickers y las une por timestamp con prefijo {ticker}_.
     El modelo puede así usar contexto de mercado (ej: GLD_rsi_14, MSFT_returns_5).
@@ -202,7 +202,7 @@ def _load_from_tensor(cfg: ExperimentConfig) -> pd.DataFrame:
 
     # F-101: vectorizado con numpy en vez de triple loop Python
     rows = []
-    for t_idx, ticker in zip(ticker_indices, cfg.data.tickers):
+    for t_idx, ticker in zip(ticker_indices, cfg.data.tickers, strict=False):
         ticker_data = tensor_filtered[:, t_idx, :]  # (n_timestamps, n_features)
         ticker_df = pd.DataFrame(ticker_data, columns=column_names)
         ticker_df["ts"] = ts_filtered

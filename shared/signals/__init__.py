@@ -8,4 +8,4 @@ from shared.signals.base import (
     register_signal,
 )
 
-__all__ = ["BaseSignalSource", "Signal", "register_signal", "list_signals", "get_signal"]
+__all__ = ["SIGNAL_REGISTRY", "BaseSignalSource", "Signal", "register_signal", "list_signals", "get_signal"]
