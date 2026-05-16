@@ -5,7 +5,7 @@ Pipeline batch semanal:
     1. Descarga RAW (OHLCV yfinance + noticias Alpaca)
     2. FinBERT → silver_news_alpaca
     3. Genera capa SILVER (indicadores via shared.indicators)
-   
+
 
 Uso:
     python -m apps.ingestion_historical.main
@@ -24,7 +24,6 @@ from apps.ingestion_historical.finbert import run_finbert
 from apps.ingestion_historical.ingestion import run_update
 from apps.ingestion_historical.news_alpaca import download_all as download_news
 from apps.ingestion_historical.silver import run_silver
-
 from shared.symbols import ALL_SYMBOLS
 from shared.utils.logging import setup_logging
 
@@ -37,9 +36,9 @@ def main():
     parser.add_argument("--skip-raw", action="store_true")
     parser.add_argument("--skip-finbert", action="store_true")
     parser.add_argument("--skip-silver", action="store_true")
-    
+
     parser.add_argument("--only-silver", action="store_true")
-    
+
     parser.add_argument("--only-finbert", action="store_true")
     args = parser.parse_args()
 
@@ -49,7 +48,7 @@ def main():
 
     if args.only_silver:
         args.skip_raw = args.skip_finbert = True
-    
+
     if args.only_finbert:
         args.skip_raw = args.skip_silver = True
 
@@ -81,7 +80,7 @@ def main():
         run_silver(tickers, intervals=["1m", "5m", "15m"], enrich_news=True)
         log.info(f"  Silver completado en {time.time() - t0:.1f}s")
 
-    
+
 
     elapsed = round((datetime.now() - start).total_seconds(), 1)
     log.info(f"Pipeline completado en {elapsed}s")
