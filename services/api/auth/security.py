@@ -12,6 +12,11 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent.parent.parent / ".env")
 
 from jose import jwt
 from passlib.context import CryptContext

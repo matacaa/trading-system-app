@@ -13,6 +13,7 @@ requests>=2.31
 httpx>=0.25
 python-jose[cryptography]>=3.3
 passlib[bcrypt]>=1.7
+bcrypt==4.0.1
 alpaca-py>=0.20
 scikit-learn>=1.4
 xgboost>=2.0
