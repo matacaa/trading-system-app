@@ -35,6 +35,7 @@ from apps.trading_engine.reconciliation import reconcile_trades
 from shared.config import cfg as app_cfg
 from shared.guardrails import decide
 from shared.inference import load_models, predict_ensemble
+from shared.squawk_generator import generate_squawks
 from shared.utils.logging import setup_logging
 
 log = logging.getLogger(__name__)
@@ -229,6 +230,14 @@ def run(cfg: dict, modelos: list) -> None:
                 decision = decide(ticker, score, row, cfg_gr, estado)
                 save_timing("decide", time.time() - t0, run_id=run_id, ticker=ticker)
                 save_decision(decision, detalle)
+
+                # Generar squawks para usuarios que siguen este ticker
+                try:
+                    t0 = time.time()
+                    generate_squawks(decision, row, detalle, run_id)
+                    save_timing("squawks", time.time() - t0, run_id=run_id, ticker=ticker)
+                except Exception as e:
+                    log.warning(f"  {ticker}: Error generando squawks: {e}")
 
                 # Ejecutar orden si procede
                 if decision["decision"] == "BUY":
