@@ -97,7 +97,7 @@ ignore = ["E501", "N803", "N806"]  # N803/N806: X, X_train, X_test son convenci�
 "apps/api/main.py" = ["E402"]        # Legacy: sys.path antes de imports
 "services/api/main.py" = ["E402"]    # Routers se importan tras app = FastAPI()
 "services/api/routers/*.py" = ["B008"]  # Depends() en default args es patrón estándar FastAPI
-"services/api/auth/*.py" = ["B008"]     # Idem
+"services/api/auth/*.py" = ["B008", "E402"]  # B008: Depends(), E402: load_dotenv antes de imports
 "services/decision/main.py" = ["E402"]
 "services/features/main.py" = ["E402"]
 "services/inference/main.py" = ["E402"]
