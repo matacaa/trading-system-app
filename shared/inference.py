@@ -173,9 +173,9 @@ def predict_ensemble(
     if not scores:
         log.warning(
             f"  [{ticker}] NINGÚN modelo respondió. "
-            f"Score por defecto 50.0 (neutral). Decisión no fiable."
+            f"Score por defecto 0.0 (neutral). No se genera Buy"
         )
-        return 50.0, detalle, signals
+        return 0.0, detalle, signals
 
     # F-12: avisar si algunos modelos fallaron y los pesos se re-normalizan
     n_ok = len(scores)
@@ -198,7 +198,7 @@ def predict_ensemble(
             )
 
     total_peso = sum(p for _, p in scores)
-    score_final = sum(s * p for s, p in scores) / total_peso if total_peso > 0 else 50.0
+    score_final = sum(s * p for s, p in scores) / total_peso if total_peso > 0 else 0.0
 
     return round(score_final, 2), detalle, signals
 
