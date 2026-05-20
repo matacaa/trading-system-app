@@ -23,8 +23,12 @@ estas funciones (paridad training/live resuelta).
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
+
+log = logging.getLogger(__name__)
 
 
 def ema(series: pd.Series, period: int) -> pd.Series:
@@ -192,6 +196,12 @@ def enrich_sentiment(
     """
     from shared.db import query as db_query
 
+    # Whitelist de tablas de noticias permitidas
+    _allowed_news_tables = {"silver_news_alpaca", "raw_news_rt"}
+    if news_table not in _allowed_news_tables:
+        log.warning("Tabla de noticias '%s' no permitida. Usando silver_news_alpaca.", news_table)
+        news_table = "silver_news_alpaca"
+
     df = df.copy()
     df["sentiment_label"] = None
     df["sentiment_score"] = None
@@ -213,7 +223,8 @@ def enrich_sentiment(
                 ORDER BY published_at""",
             [ticker, (ts_min - pd.Timedelta(minutes=window_minutes)).isoformat(), ts_max.isoformat()],
         )
-    except Exception:
+    except Exception as e:
+        log.warning("Error consultando sentiment de '%s' en %s: %s", ticker, news_table, e)
         return df
 
     if not news_data:
@@ -229,17 +240,20 @@ def enrich_sentiment(
     bar_df["_bar_ts"] = pd.to_datetime(bar_df["_bar_ts"], utc=True)
     bar_df = bar_df.sort_values("_bar_ts")
 
-    merged = pd.merge_asof(
-        bar_df,
-        news_df[["published_at", "sentiment_label", "sentiment_score"]].rename(
-            columns={"published_at": "_bar_ts"}
-        ),
-        on="_bar_ts",
-        direction="backward",
-        tolerance=pd.Timedelta(minutes=window_minutes),
-    )
+    try:
+        merged = pd.merge_asof(
+            bar_df,
+            news_df[["published_at", "sentiment_label", "sentiment_score"]].rename(
+                columns={"published_at": "_bar_ts"}
+            ),
+            on="_bar_ts",
+            direction="backward",
+            tolerance=pd.Timedelta(minutes=window_minutes),
+        )
 
-    df["sentiment_label"] = merged["sentiment_label"].values
-    df["sentiment_score"] = merged["sentiment_score"].values
+        df["sentiment_label"] = merged["sentiment_label"].values
+        df["sentiment_score"] = merged["sentiment_score"].values
+    except Exception as e:
+        log.warning("Error en merge_asof sentiment para '%s': %s", ticker, e)
 
     return df

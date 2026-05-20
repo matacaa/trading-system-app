@@ -4,9 +4,11 @@ shared/tts.py
 Text-to-Speech con Azure Speech Services REST API.
 Convierte texto de squawk en MP3 y lo sube a Azure Blob Storage.
 
+Fase 6.14: calcula audio_duration del MP3 generado.
+
 Uso:
     from shared.tts import generate_audio
-    audio_url = generate_audio(squawk_id, text, locale="es")
+    audio_url, audio_duration = generate_audio(squawk_id, text, locale="es")
 
 Requiere env vars:
     AZURE_SPEECH_KEY         — Key del recurso Azure Speech
@@ -16,6 +18,7 @@ Requiere env vars:
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 import uuid
@@ -38,8 +41,14 @@ VOICES = {
     "en": "en-US-GuyNeural",
 }
 
+# Audio format: 16khz, 128kbps mono MP3
+_OUTPUT_FORMAT = "audio-16khz-128kbitrate-mono-mp3"
+_BITRATE_KBPS = 128
 
-def generate_audio(squawk_id: str, text: str, locale: str = "es") -> str | None:
+
+def generate_audio(
+    squawk_id: str, text: str, locale: str = "es",
+) -> tuple[str | None, float | None]:
     """
     Genera audio MP3 desde texto y lo sube a Blob Storage.
 
@@ -49,32 +58,65 @@ def generate_audio(squawk_id: str, text: str, locale: str = "es") -> str | None:
         locale:    idioma (es, en)
 
     Returns:
-        URL pública del MP3, o None si falla
+        (URL pública del MP3 o None, duración en segundos o None)
     """
     if not SPEECH_KEY:
         log.warning("AZURE_SPEECH_KEY no configurado — TTS desactivado")
-        return None
+        return None, None
 
     if not STORAGE_CONN_STR:
         log.warning("AZURE_STORAGE_CONN_STR no configurado — TTS desactivado")
-        return None
+        return None, None
 
     try:
         # 1. Generar audio con Azure Speech REST API
         audio_data = _synthesize_speech(text, locale)
         if not audio_data:
-            return None
+            return None, None
 
-        # 2. Subir a Blob Storage
+        # 2. Calcular duración del audio
+        audio_duration = _calculate_duration(audio_data)
+
+        # 3. Subir a Blob Storage
         blob_name = f"{squawk_id}_{uuid.uuid4().hex[:8]}.mp3"
         audio_url = _upload_to_blob(audio_data, blob_name)
 
-        log.info("  TTS: audio generado (%d bytes) → %s", len(audio_data), blob_name)
-        return audio_url
+        log.info(
+            "  TTS: audio generado (%d bytes, %.1fs) → %s",
+            len(audio_data),
+            audio_duration or 0,
+            blob_name,
+        )
+        return audio_url, audio_duration
 
     except Exception as e:
         log.error("Error en TTS: %s", e)
-        return None
+        return None, None
+
+
+def _calculate_duration(audio_data: bytes) -> float | None:
+    """
+    Calcula la duración de un MP3 en segundos.
+
+    Intenta usar mutagen si está disponible (preciso).
+    Fallback: estimación por tamaño y bitrate.
+    """
+    # Método 1: mutagen (preciso)
+    try:
+        from mutagen.mp3 import MP3
+
+        mp3 = MP3(io.BytesIO(audio_data))
+        return round(mp3.info.length, 2)
+    except ImportError:
+        pass
+    except Exception as e:
+        log.debug("mutagen falló, usando estimación: %s", e)
+
+    # Método 2: estimación por tamaño
+    # bitrate = 128 kbps → 16000 bytes/s
+    bytes_per_second = _BITRATE_KBPS * 1000 / 8
+    duration = len(audio_data) / bytes_per_second
+    return round(duration, 2)
 
 
 def _synthesize_speech(text: str, locale: str) -> bytes | None:
@@ -82,7 +124,6 @@ def _synthesize_speech(text: str, locale: str) -> bytes | None:
     voice = VOICES.get(locale, VOICES["es"])
     lang = "es-ES" if locale.startswith("es") else "en-US"
 
-    # SSML para controlar voz, velocidad y formato
     ssml = f"""
     <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{lang}'>
         <voice name='{voice}'>
@@ -96,7 +137,7 @@ def _synthesize_speech(text: str, locale: str) -> bytes | None:
     headers = {
         "Ocp-Apim-Subscription-Key": SPEECH_KEY,
         "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3",
+        "X-Microsoft-OutputFormat": _OUTPUT_FORMAT,
         "User-Agent": "SquawksML-TTS/1.0",
     }
 

@@ -230,6 +230,14 @@ def _predict_sklearn(
     scaler_params: dict | None,
 ) -> float:
     """Predicción sklearn: una sola fila."""
+    # Detectar features faltantes
+    missing = [c for c in feature_cols if c not in row.index]
+    if missing:
+        log.warning(
+            "  _predict_sklearn: %d features faltantes rellenadas con 0: %s",
+            len(missing), missing,
+        )
+
     X = np.array([[row.get(c, 0.0) for c in feature_cols]], dtype=np.float32)
 
     if scaler_params:
@@ -297,3 +305,121 @@ def _predict_pytorch(
     # F-66: usar API pública predict_proba() en vez de model._net
     proba = model.predict_proba(X)
     return float(proba[0]) if len(proba) > 0 else None
+
+
+# ── Modelos custom por usuario (Paso 3 del pipeline 6.11) ─────────────
+
+
+def run_custom_models(
+    user_id: str,
+    ticker: str,
+    models_config: dict,
+    row: pd.Series,
+    df_hist: pd.DataFrame | None = None,
+) -> float | None:
+    """
+    Ejecuta modelos custom del usuario para un ticker.
+
+    Descarga modelos de Blob Storage (con cache en /tmp/models/)
+    y genera predicción ponderada.
+
+    Args:
+        user_id:       ID del usuario
+        ticker:        ticker a predecir
+        models_config: configuración de modelos del usuario (de user_preferences)
+        row:           última vela
+        df_hist:       historial de velas
+
+    Returns:
+        score custom (0-100) o None si no tiene modelos o fallan todos
+    """
+    custom_models = models_config.get("custom_models", [])
+    if not custom_models:
+        return None
+
+    scores: list[tuple[float, float]] = []  # (score, peso)
+
+    for m_cfg in custom_models:
+        blob_path = m_cfg.get("blob_path", "")
+        model_name = m_cfg.get("model_name", "")
+        peso = m_cfg.get("peso", 1.0)
+        feature_cols = m_cfg.get("feature_columns", [])
+        scaler_params = m_cfg.get("scaler_params")
+        exp_name = m_cfg.get("experiment_name", f"custom_{model_name}")
+
+        if not blob_path or not model_name:
+            continue
+
+        try:
+            # Descargar modelo desde Blob Storage (con cache local automática)
+            from shared.blob_storage import ensure_local
+
+            local_path = ensure_local(blob_path)
+            log.info("  Custom model listo: %s → %s", blob_path, local_path)
+
+            # Cargar y predecir
+            model = load_model_from_path(model_name, local_path)
+            if model is None:
+                log.warning("  Custom model no se pudo cargar: %s", exp_name)
+                continue
+
+            y_prob = _predict_single(
+                row=row,
+                df_hist=df_hist,
+                model=model,
+                model_name=model_name,
+                feature_cols=feature_cols,
+                scaler_params=scaler_params,
+                experiment_name=exp_name,
+            )
+
+            if y_prob is not None:
+                scores.append((y_prob * 100, peso))
+                log.info("  Custom model %s: score %.1f (peso %.2f)", exp_name, y_prob * 100, peso)
+
+        except Exception as e:
+            log.warning("  Error con custom model %s: %s", exp_name, e)
+
+    if not scores:
+        return None
+
+    total_peso = sum(p for _, p in scores)
+    score_custom = sum(s * p for s, p in scores) / total_peso if total_peso > 0 else 0.0
+    return round(score_custom, 2)
+
+
+def compute_user_score(
+    score_sistema: float,
+    score_custom: float | None,
+    models_config: dict | None,
+) -> float:
+    """
+    Calcula el score final del usuario combinando sistema + custom.
+
+    Tres modos (de models_config):
+        - system_only: score = score_sistema (default)
+        - custom_only: score = score_custom
+        - blend:       score = weighted avg según custom_weight
+
+    Args:
+        score_sistema: score del ensemble del sistema (0-100)
+        score_custom:  score de modelos custom (0-100 o None)
+        models_config: configuración del usuario
+
+    Returns:
+        score final (0-100)
+    """
+    if not models_config or score_custom is None:
+        return score_sistema
+
+    mode = models_config.get("mode", "system_only")
+
+    if mode == "custom_only" and score_custom is not None:
+        return score_custom
+
+    if mode == "blend" and score_custom is not None:
+        weight = models_config.get("custom_weight", 0.5)
+        weight = max(0.0, min(1.0, weight))
+        return round(score_sistema * (1 - weight) + score_custom * weight, 2)
+
+    return score_sistema

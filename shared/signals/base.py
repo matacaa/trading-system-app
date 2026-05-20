@@ -84,6 +84,8 @@ class BaseSignalSource(ABC):
 
 SIGNAL_REGISTRY: dict[str, type[BaseSignalSource]] = {}
 
+_signals_discovered = False
+
 
 def register_signal(cls: type[BaseSignalSource]) -> type[BaseSignalSource]:
     """Decorador que registra una fuente de señal."""
@@ -118,8 +120,11 @@ def get_signal(name: str) -> BaseSignalSource:
 
 def _auto_discover_signals():
     """Importa automáticamente todos los módulos en signals/rules/."""
-    if SIGNAL_REGISTRY:
+    global _signals_discovered
+    if _signals_discovered:
         return
+
+    _signals_discovered = True
     import importlib
     import pkgutil
     from pathlib import Path

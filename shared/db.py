@@ -28,8 +28,21 @@ from functools import lru_cache
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
+import psycopg2.sql
 
 from shared.config import cfg
+
+# Whitelist de tablas permitidas para upsert (previene SQL injection)
+_ALLOWED_TABLES = frozenset({
+    "gold_squawks", "gold_signals", "gold_decisions", "gold_trades",
+    "gold_logs", "gold_pipeline_timings",
+    "raw_ohlcv_rt", "silver_features_rt", "silver_model_registry",
+    "silver_predictions", "silver_metrics",
+    "backtest_runs", "backtest_trades", "backtest_metrics",
+    "ticker_universe", "guardrail_registry", "plan_config",
+    "training_jobs", "model_type_registry", "user_credits",
+    "users", "user_preferences", "config",
+})
 
 log = logging.getLogger(__name__)
 
@@ -127,8 +140,10 @@ def upsert(
     """
     UPSERT genérico: INSERT ... ON CONFLICT (cols) DO UPDATE SET ...
 
+    Usa psycopg2.sql.Identifier para tabla y columnas (previene SQL injection).
+
     Args:
-        table: nombre de la tabla
+        table: nombre de la tabla (debe estar en _ALLOWED_TABLES)
         rows: lista de dicts con las mismas keys
         conflict: columnas del constraint, e.g. "ts,ticker,experiment_name"
 
@@ -138,26 +153,45 @@ def upsert(
     if not rows:
         return 0
 
+    if table not in _ALLOWED_TABLES:
+        raise ValueError(f"Tabla '{table}' no permitida en upsert. Permitidas: {sorted(_ALLOWED_TABLES)}")
+
     columns = list(rows[0].keys())
     conflict_cols = [c.strip() for c in conflict.split(",")]
     update_cols = [c for c in columns if c not in conflict_cols]
 
-    col_list = ", ".join(columns)
-    placeholders = ", ".join(["%s"] * len(columns))
-    update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
+    # Construir SQL con identificadores seguros
+    tbl = psycopg2.sql.Identifier(table)
+    col_ids = psycopg2.sql.SQL(", ").join(psycopg2.sql.Identifier(c) for c in columns)
+    placeholders = psycopg2.sql.SQL(", ").join(psycopg2.sql.Placeholder() for _ in columns)
+    conflict_ids = psycopg2.sql.SQL(", ").join(psycopg2.sql.Identifier(c) for c in conflict_cols)
 
-    sql = f"""
-        INSERT INTO {table} ({col_list})
-        VALUES ({placeholders})
-        ON CONFLICT ({conflict})
-        {"DO UPDATE SET " + update_set if update_set else "DO NOTHING"}
-    """
+    if update_cols:
+        update_set = psycopg2.sql.SQL(", ").join(
+            psycopg2.sql.SQL("{col} = EXCLUDED.{col}").format(
+                col=psycopg2.sql.Identifier(c),
+            )
+            for c in update_cols
+        )
+        on_conflict = psycopg2.sql.SQL("DO UPDATE SET ") + update_set
+    else:
+        on_conflict = psycopg2.sql.SQL("DO NOTHING")
+
+    stmt = psycopg2.sql.SQL(
+        "INSERT INTO {table} ({cols}) VALUES ({vals}) ON CONFLICT ({conflict}) {action}"
+    ).format(
+        table=tbl,
+        cols=col_ids,
+        vals=placeholders,
+        conflict=conflict_ids,
+        action=on_conflict,
+    )
 
     values_list = [tuple(row[c] for c in columns) for row in rows]
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            psycopg2.extras.execute_batch(cur, sql, values_list)
+            psycopg2.extras.execute_batch(cur, stmt.as_string(cur), values_list)
             return cur.rowcount
 
 

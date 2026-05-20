@@ -60,7 +60,6 @@ def save_log(
     errores: list[str],
     status: str,
     run_id: str = "",
-    max_retries: int = 3,
 ) -> None:
     """Guarda el log de auditoría de cada ejecución en gold_logs."""
     sql = """
@@ -79,18 +78,11 @@ def save_log(
         status,
     )
 
-    for attempt in range(1, max_retries + 1):
-        try:
-            execute(sql, params)
-            log.info(f"  Log guardado: {status} ({duration_s:.1f}s)")
-            return
-        except Exception as e:
-            if attempt < max_retries:
-                log.warning(f"  Retry save_log ({attempt}/{max_retries}): {e}")
-                import time
-                time.sleep(1)
-            else:
-                log.error(f"Error guardando log tras {max_retries} intentos: {e}")
+    try:
+        execute(sql, params)
+        log.info(f"  Log guardado: {status} ({duration_s:.1f}s)")
+    except Exception as e:
+        log.error(f"Error guardando log: {e}")
 
 
 def save_timing(

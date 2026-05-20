@@ -28,6 +28,8 @@ from shared.models.base import BaseModel
 
 log = logging.getLogger(__name__)
 
+_discovered = False
+
 # ─── Registro global ──────────────────────────────────────────────
 MODEL_REGISTRY: dict[str, type[BaseModel]] = {}
 
@@ -64,8 +66,11 @@ def _auto_discover() -> None:
     Esto dispara los decoradores @register_model de cada clase,
     registrándolas en MODEL_REGISTRY sin necesidad de imports manuales.
     """
-    if MODEL_REGISTRY:
-        return  # ya descubiertos
+    global _discovered
+    if _discovered:
+        return
+
+    _discovered = True
 
     models_dir = Path(__file__).parent
     for subdir in ["sklearn_models", "pytorch_models"]:
