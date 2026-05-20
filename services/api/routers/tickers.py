@@ -1,71 +1,115 @@
-"""Endpoints de tickers y velas."""
+"""
+services/api/routers/tickers.py
+───────────────────────────────
+Endpoints de tickers — Fase 6.5 reescritura.
 
-from fastapi import APIRouter, Depends
+GET /tickers/universe           — catálogo desde DB con search/filter/pagination
+GET /tickers/{ticker}/indicators — serie temporal indicadores
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from services.api.auth.dependencies import get_current_user
 from shared.db import query
-from shared.symbols import ALL_SYMBOLS
 
+log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/tickers")
-async def list_tickers(_user: dict = Depends(get_current_user)):
-    tickers_with_data: set[str] = set()
-    for ticker in ALL_SYMBOLS:
-        try:
-            rows = query(
-                "SELECT ticker FROM silver_features_1m WHERE ticker = %s LIMIT 1",
-                [ticker],
-            )
-            if rows:
-                tickers_with_data.add(ticker)
-        except Exception:
-            pass
-    return {"tickers": [
-        {"ticker": t, "name": n, "has_data": t in tickers_with_data}
-        for t, n in ALL_SYMBOLS.items()
-    ]}
-
-
-@router.get("/candles")
-async def get_candles(
-    ticker: str = "AAPL",
-    limit: int = 200,
-    _user: dict = Depends(get_current_user),
+@router.get("/tickers/universe")
+async def ticker_universe(
+    search: str | None = Query(None, description="Buscar por ticker o nombre"),
+    sector: str | None = Query(None),
+    exchange: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    user: dict = Depends(get_current_user),
 ):
+    """Catálogo de tickers disponibles con búsqueda y filtros."""
+    conditions = ["is_active = true"]
+    params: list[Any] = []
+
+    if search:
+        conditions.append("(ticker ILIKE %s OR name ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%"])
+
+    if sector:
+        conditions.append("sector = %s")
+        params.append(sector)
+
+    if exchange:
+        conditions.append("exchange = %s")
+        params.append(exchange)
+
+    where = " AND ".join(conditions)
+    offset = (page - 1) * limit
+
+    # Count
+    count_rows = query(f"SELECT COUNT(*) as total FROM ticker_universe WHERE {where}", params)
+    total = count_rows[0]["total"] if count_rows else 0
+
+    # Fetch page
     rows = query(
-        """SELECT ts, open, high, low, close, volume
-           FROM raw_ohlcv_rt WHERE ticker = %s ORDER BY ts DESC LIMIT %s""",
+        f"""SELECT ticker, name, sector, exchange, model_coverage
+            FROM ticker_universe WHERE {where}
+            ORDER BY ticker LIMIT %s OFFSET %s""",
+        [*params, limit, offset],
+    )
+
+    # Sectores para filtro
+    sector_rows = query(
+        "SELECT DISTINCT sector FROM ticker_universe WHERE is_active = true ORDER BY sector"
+    )
+    sectors = [r["sector"] for r in (sector_rows or [])]
+
+    return {
+        "tickers": rows or [],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "sectors": sectors,
+    }
+
+
+@router.get("/tickers/{ticker}/indicators")
+async def ticker_indicators(
+    ticker: str,
+    indicators: str = Query("rsi_14,macd_line,ema_9,ema_21"),
+    limit: int = Query(200, ge=1, le=1000),
+    user: dict = Depends(get_current_user),
+):
+    """Serie temporal de indicadores para chart."""
+    t_rows = query("SELECT ticker FROM ticker_universe WHERE ticker = %s", [ticker])
+    if not t_rows:
+        raise HTTPException(404, f"Ticker '{ticker}' no encontrado")
+
+    allowed = {
+        "rsi_14", "macd_line", "macd_signal", "ema_9", "ema_12", "ema_21",
+        "bb_pct", "bb_width", "bb_upper", "bb_lower", "bb_middle",
+        "vwap", "atr_14", "volume_norm", "returns_5",
+        "open", "high", "low", "close", "volume",
+    }
+    requested = [i.strip() for i in indicators.split(",")]
+    valid = [i for i in requested if i in allowed]
+    if not valid:
+        raise HTTPException(
+            400,
+            f"No hay indicadores válidos. Permitidos: {', '.join(sorted(allowed))}",
+        )
+
+    cols = ", ".join(valid)
+    rows = query(
+        f"SELECT ts, {cols} FROM silver_features_rt WHERE ticker = %s ORDER BY ts DESC LIMIT %s",
         [ticker, limit],
     )
-    candles = sorted(rows, key=lambda x: x["ts"])
-    return {"candles": candles, "ticker": ticker}
-
-
-@router.get("/candles/historical")
-async def get_candles_historical(
-    ticker: str = "AAPL",
-    timeframe: str = "1m",
-    start: str = "",
-    end: str = "",
-    limit: int = 500,
-    _user: dict = Depends(get_current_user),
-):
-    table = f"raw_ohlcv_{timeframe}" if timeframe in ("1m", "5m", "15m") else "raw_ohlcv_1m"
-    conditions = ["ticker = %s"]
-    params: list = [ticker]
-    if start:
-        conditions.append("ts >= %s")
-        params.append(start)
-    if end:
-        conditions.append("ts <= %s")
-        params.append(end)
-    where = " AND ".join(conditions)
-    params.append(limit)
-    rows = query(
-        f"SELECT ts, open, high, low, close, volume FROM {table} WHERE {where} ORDER BY ts DESC LIMIT %s",
-        params,
-    )
-    candles = sorted(rows, key=lambda x: x["ts"])
-    return {"candles": candles, "ticker": ticker, "source": table}
+    return {
+        "ticker": ticker,
+        "indicators": valid,
+        "data": list(reversed(rows or [])),
+        "count": len(rows or []),
+    }
