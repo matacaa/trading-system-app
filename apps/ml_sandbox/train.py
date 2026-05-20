@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 from apps.ml_sandbox.config import ExperimentConfig
-from shared.db import sb
+from shared.db import execute, query
 from shared.models.base import BaseModel
 from shared.models.registry import get_model
 
@@ -129,15 +129,12 @@ def _register_model(
 
     # 1. Obtener versión actual más alta
     try:
-        resp = (
-            sb.table("silver_model_registry")
-            .select("version")
-            .eq("experiment_name", exp_name)
-            .order("version", desc=True)
-            .limit(1)
-            .execute()
+        rows = query(
+            "SELECT version FROM silver_model_registry "
+            "WHERE experiment_name = %s ORDER BY version DESC LIMIT 1",
+            [exp_name],
         )
-        current_max = resp.data[0]["version"] if resp.data else 0
+        current_max = rows[0]["version"] if rows else 0
     except Exception:
         current_max = 0
 
@@ -145,9 +142,11 @@ def _register_model(
 
     # 2. Desactivar versiones anteriores
     try:
-        sb.table("silver_model_registry").update(
-            {"is_active": False}
-        ).eq("experiment_name", exp_name).execute()
+        execute(
+            "UPDATE silver_model_registry SET is_active = false "
+            "WHERE experiment_name = %s",
+            [exp_name],
+        )
     except Exception as e:
         log.warning(f"Error desactivando versiones anteriores: {e}")
 
@@ -159,27 +158,24 @@ def _register_model(
         # N-06: incluir ticker(s) en el registro
         tickers_str = ",".join(cfg.data.tickers) if hasattr(cfg.data, "tickers") else None
 
-        sb.table("silver_model_registry").insert({
-            "experiment_name": exp_name,
-            "version": new_version,
-            "is_active": True,
-            "status": "training",
-            "model_name": cfg.model.name,
-            "ticker": tickers_str,
-            "task": cfg.experiment.task,
-            "interval": timeframe,
-            "train_start": cfg.data.train_start,
-            "train_end": cfg.data.train_end,
-            "test_start": cfg.data.test_start,
-            "test_end": cfg.data.test_end,
-            "file_path": relative_path,
-            "feature_columns": json.dumps(feature_names),
-            "feature_source": feature_source,
-            "timeframe": timeframe,
-            "scaler_params": json.dumps(scaler_params) if scaler_params else None,
-            # F-51: initial metrics incluye training_duration
-            "metrics_summary": json.dumps({"training_duration_s": duration_s}),
-        }).execute()
+        execute(
+            """INSERT INTO silver_model_registry
+               (experiment_name, version, is_active, status, model_name, ticker, task,
+                interval, train_start, train_end, test_start, test_end,
+                file_path, feature_columns, feature_source, timeframe,
+                scaler_params, metrics_summary)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            [
+                exp_name, new_version, True, "training", cfg.model.name,
+                tickers_str, cfg.experiment.task, timeframe,
+                cfg.data.train_start, cfg.data.train_end,
+                cfg.data.test_start, cfg.data.test_end,
+                relative_path, json.dumps(feature_names),
+                feature_source, timeframe,
+                json.dumps(scaler_params) if scaler_params else None,
+                json.dumps({"training_duration_s": duration_s}),
+            ],
+        )
 
         log.info(
             f"Registrado en silver_model_registry: {exp_name} v{new_version} "

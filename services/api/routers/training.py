@@ -36,10 +36,10 @@ async def train(req: TrainRequest, user: dict = Depends(get_current_user)):
     """
     import sys
 
-    from apps.api.main import _generate_experiment_yaml, _run_pipeline
+    from shared.legacy_runners import generate_experiment_yaml, run_pipeline
 
-    tmp, exp_name = _generate_experiment_yaml(req)
-    result = _run_pipeline(
+    tmp, exp_name = generate_experiment_yaml(req)
+    result = run_pipeline(
         [sys.executable, "-m", "apps.ml_sandbox.pipeline", str(tmp)],
         timeout=600,
     )

@@ -18,7 +18,7 @@ import pandas as pd
 
 from apps.ingestion_historical.downloader import download_block, get_date_blocks
 from shared.config import cfg
-from shared.db import sb
+from shared.db import execute, query_one, upsert
 from shared.utils.time import utc_isoformat
 
 log = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ INTERVALS = ["1m", "5m", "15m"]
 def _get_symbol_id(ticker: str) -> int | None:
     """Busca el ID del ticker en la tabla symbols."""
     try:
-        resp = sb.table("symbols").select("id").eq("ticker", ticker).single().execute()
-        return resp.data["id"] if resp.data else None
+        row = query_one("SELECT id FROM symbols WHERE ticker = %s", [ticker])
+        return row["id"] if row else None
     except Exception:
         return None
 
@@ -42,19 +42,19 @@ def _get_last_ts(ticker: str, interval: str) -> datetime | None:
     """Obtiene el último timestamp para un ticker/intervalo."""
     table = RAW_TABLES[interval]
     try:
-        resp = (
-            sb.table(table).select("ts")
-            .eq("ticker", ticker).order("ts", desc=True).limit(1).execute()
+        row = query_one(
+            f"SELECT ts FROM {table} WHERE ticker = %s ORDER BY ts DESC LIMIT 1",
+            [ticker],
         )
-        if resp.data:
-            return pd.to_datetime(resp.data[0]["ts"], utc=True)
+        if row:
+            return pd.to_datetime(row["ts"], utc=True)
     except Exception:
         pass
     return None
 
 
 def _upsert_ohlcv(df: pd.DataFrame, symbol_id: int, interval: str) -> tuple[int, int]:
-    """Escribe OHLCV en Supabase. Retorna (inserted, skipped)."""
+    """Escribe OHLCV en PostgreSQL. Retorna (inserted, skipped)."""
     if df.empty:
         return 0, 0
 
@@ -77,7 +77,7 @@ def _upsert_ohlcv(df: pd.DataFrame, symbol_id: int, interval: str) -> tuple[int,
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
         try:
-            sb.table(table).upsert(batch, on_conflict="ticker,ts").execute()
+            upsert(table, batch, conflict="ticker,ts")
             inserted += len(batch)
         except Exception as e:
             log.error(f"  Error upsert batch: {e}")
@@ -91,24 +91,17 @@ def _log_ingestion(
 ) -> None:
     """Registra la ingesta en la tabla de logs."""
     try:
-        # N-07: nombre de tabla alineado con schema Supabase
-        sb.table("ingestion_log").insert({
-            "run_at": utc_isoformat(),
-            "ticker": ticker,
-            "interval": interval,
-            "start": start.isoformat(),
-            "end": end.isoformat(),
-            "inserted": inserted,
-            "skipped": skipped,
-            "status": status,
-            "error": error,
-            "duration_s": round(duration_s, 2),
-        }).execute()
+        execute(
+            """INSERT INTO ingestion_log
+               (run_at, ticker, interval, start, "end", inserted, skipped, status, error, duration_s)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            [utc_isoformat(), ticker, interval, start.isoformat(), end.isoformat(),
+             inserted, skipped, status, error, round(duration_s, 2)],
+        )
     except Exception as e:
         log.warning(
             f"  Error logging ingestion: {e}. "
-            f"Verifica que la tabla 'ingestion_log' existe en Supabase "
-            f"(puede llamarse 'ingestion_logs' — ver scripts/schema_fixes.sql)."
+            f"Verifica que la tabla 'ingestion_log' existe."
         )
 
 

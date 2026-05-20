@@ -32,10 +32,10 @@ async def run_backtest(req: BacktestRequest, user: dict = Depends(get_current_us
     """
     import sys
 
-    from apps.api.main import _generate_backtest_yaml, _run_pipeline
+    from shared.legacy_runners import generate_backtest_yaml, run_pipeline
 
-    tmp, bt_name = _generate_backtest_yaml(req)
-    result = _run_pipeline(
+    tmp, bt_name = generate_backtest_yaml(req)
+    result = run_pipeline(
         [sys.executable, "-m", "apps.ml_sandbox.backtest", str(tmp)],
         timeout=600,
     )

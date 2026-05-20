@@ -18,7 +18,7 @@ import logging
 import os
 
 from shared.config import cfg
-from shared.db import sb
+from shared.db import query, upsert
 
 log = logging.getLogger(__name__)
 
@@ -62,34 +62,17 @@ def analyze_sentiment(texts: list[str], model) -> list[dict]:
 def load_raw_news() -> list[dict]:
     """Carga noticias de raw_news_alpaca aún no procesadas."""
     # URLs ya procesadas
-    processed: set[tuple[str, str]] = set()
-    offset = 0
-    while True:
-        resp = sb.table("silver_news_alpaca").select("url,ticker").range(offset, offset + 999).execute()
-        batch = resp.data or []
-        for r in batch:
-            processed.add((r["url"], r["ticker"]))
-        if len(batch) < 1000:
-            break
-        offset += 1000
+    processed_rows = query("SELECT url, ticker FROM silver_news_alpaca")
+    processed = {(r["url"], r["ticker"]) for r in processed_rows}
 
     log.info(f"  Ya procesadas: {len(processed)}")
 
     # Noticias pendientes
-    all_rows: list[dict] = []
-    offset = 0
-    while True:
-        resp = sb.table("raw_news_alpaca").select("*").range(offset, offset + 999).execute()
-        batch = resp.data or []
-        for r in batch:
-            if (r["url"], r["ticker"]) not in processed:
-                all_rows.append(r)
-        if len(batch) < 1000:
-            break
-        offset += 1000
+    all_rows = query("SELECT * FROM raw_news_alpaca ORDER BY published_at")
+    pending = [r for r in all_rows if (r["url"], r["ticker"]) not in processed]
 
-    log.info(f"  Pendientes: {len(all_rows)}")
-    return all_rows
+    log.info(f"  Pendientes: {len(pending)}")
+    return pending
 
 
 def save_to_silver(rows: list[dict]) -> int:
@@ -101,7 +84,7 @@ def save_to_silver(rows: list[dict]) -> int:
     for i in range(0, len(rows), 100):
         batch = rows[i : i + 100]
         try:
-            sb.table("silver_news_alpaca").upsert(batch, on_conflict="url,ticker").execute()
+            upsert("silver_news_alpaca", batch, conflict="url,ticker")
             inserted += len(batch)
         except Exception as e:
             log.error(f"  Error batch {i // 100 + 1}: {e}")

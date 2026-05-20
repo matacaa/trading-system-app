@@ -19,7 +19,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 from apps.ml_sandbox.config import ExperimentConfig
-from shared.db import sb
+from shared.db import query
 
 log = logging.getLogger(__name__)
 
@@ -103,17 +103,13 @@ def split_data(
         # F-100: cargar target para TODOS los tickers, no solo el primero
         all_target_dfs = []
         for ticker in cfg.data.tickers:
-            resp = (
-                sb.table(table)
-                .select(f"ts,ticker,{cfg.data.target}")
-                .eq("ticker", ticker)
-                .gte("ts", cfg.data.train_start)
-                .lte("ts", cfg.data.test_end)
-                .order("ts")
-                .execute()
+            rows = query(
+                f"SELECT ts, ticker, {cfg.data.target} FROM {table} "
+                "WHERE ticker = %s AND ts >= %s AND ts <= %s ORDER BY ts",
+                [ticker, cfg.data.train_start, cfg.data.test_end],
             )
-            if resp.data:
-                all_target_dfs.append(pd.DataFrame(resp.data))
+            if rows:
+                all_target_dfs.append(pd.DataFrame(rows))
 
         if not all_target_dfs:
             raise ValueError(f"No se encontraron targets para {cfg.data.tickers}")

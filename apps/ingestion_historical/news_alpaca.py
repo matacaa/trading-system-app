@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 import requests
 
 from shared.config import cfg
-from shared.db import sb
+from shared.db import upsert
 from shared.symbols import ALL_SYMBOLS
 
 log = logging.getLogger(__name__)
@@ -97,7 +97,7 @@ def parse_news(raw: list[dict], universe: set[str]) -> list[dict]:
     return rows
 
 
-def save_to_supabase(rows: list[dict]) -> int:
+def save_to_db(rows: list[dict]) -> int:
     """Guarda noticias en raw_news_alpaca en batches."""
     if not rows:
         return 0
@@ -106,7 +106,7 @@ def save_to_supabase(rows: list[dict]) -> int:
     for i in range(0, len(rows), 100):
         batch = rows[i : i + 100]
         try:
-            sb.table("raw_news_alpaca").upsert(batch, on_conflict="url,ticker").execute()
+            upsert("raw_news_alpaca", batch, conflict="url,ticker")
             inserted += len(batch)
         except Exception as e:
             log.error(f"  Error batch {i // 100 + 1}: {e}")
@@ -125,6 +125,6 @@ def download_all(symbols: list[str] | None = None, days: int = 7) -> int:
     rows = parse_news(raw, universe)
     log.info(f"Total filas parseadas: {len(rows)}")
 
-    total = save_to_supabase(rows)
+    total = save_to_db(rows)
     log.info(f"Total guardadas en raw_news_alpaca: {total}")
     return total

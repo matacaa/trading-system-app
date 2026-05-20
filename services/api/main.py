@@ -26,14 +26,18 @@ sys.path.insert(0, str(ROOT))
 from services.api.routers import (
     auth,
     backtest,
+    guardrails,
     health,
     live,
+    model_types,
     models,
+    preferences,
     signals,
     squawks,
     tickers,
     trading,
     training,
+    training_jobs,
 )
 
 log = logging.getLogger("api")
@@ -62,7 +66,11 @@ app.include_router(backtest.router,  prefix="/api", tags=["Backtest"])
 app.include_router(live.router,      prefix="/api", tags=["Live"])
 app.include_router(trading.router,   prefix="/api", tags=["Trading"])
 app.include_router(signals.router,   prefix="/api", tags=["Signals"])
-app.include_router(squawks.router,   prefix="/api", tags=["Squawks"])
+app.include_router(squawks.router,       prefix="/api", tags=["Squawks"])
+app.include_router(guardrails.router,    prefix="/api", tags=["Guardrails"])
+app.include_router(model_types.router,   prefix="/api", tags=["Model Types"])
+app.include_router(training_jobs.router, prefix="/api", tags=["Training Jobs"])
+app.include_router(preferences.router,   prefix="/api", tags=["Preferences"])
 
 
 if __name__ == "__main__":

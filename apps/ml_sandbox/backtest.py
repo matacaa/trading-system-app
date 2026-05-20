@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from shared.db import sb
+from shared.db import execute, query, upsert
 from shared.guardrails import check_guardrails
 from shared.inference import load_models, predict_ensemble
 from shared.utils.logging import setup_logging
@@ -52,27 +52,15 @@ def load_silver(cfg: dict) -> pd.DataFrame:
     table = f"silver_features_{timeframe}"
     start = cfg["data"]["test_start"]
     end = cfg["data"]["test_end"]
+    end_plus = str(pd.Timestamp(end) + pd.Timedelta(days=1))
 
     all_dfs = []
     for ticker in tickers:
-        rows: list[dict] = []
-        offset = 0
-        while True:
-            resp = (
-                sb.table(table)
-                .select("*")
-                .eq("ticker", ticker)
-                .gte("ts", start)
-                .lt("ts", str(pd.Timestamp(end) + pd.Timedelta(days=1)))
-                .order("ts")
-                .range(offset, offset + 999)
-                .execute()
-            )
-            batch = resp.data or []
-            rows.extend(batch)
-            if len(batch) < 1000:
-                break
-            offset += 1000
+        rows = query(
+            f"SELECT * FROM {table} "
+            "WHERE ticker = %s AND ts >= %s AND ts < %s ORDER BY ts",
+            [ticker, start, end_plus],
+        )
 
         if rows:
             df = pd.DataFrame(rows)
@@ -88,33 +76,19 @@ def load_silver(cfg: dict) -> pd.DataFrame:
     # Context tickers: cargar features y unir por timestamp
     if context_tickers:
         log.info(f"  Cargando context_tickers: {context_tickers}")
-        # Columnas de features a usar como contexto
         ctx_feature_cols = [
             "ema_9", "ema_12", "ema_21", "rsi_14",
             "macd_line", "macd_signal", "bb_pct", "bb_width",
             "vwap", "atr_14", "returns_5", "volume_norm",
         ]
-        ctx_select = ",".join(["ts", "ticker"] + ctx_feature_cols)
+        ctx_select = ", ".join(["ts", "ticker"] + ctx_feature_cols)
 
         for ctx_ticker in context_tickers:
-            rows: list[dict] = []
-            offset = 0
-            while True:
-                resp = (
-                    sb.table(table)
-                    .select(ctx_select)
-                    .eq("ticker", ctx_ticker)
-                    .gte("ts", start)
-                    .lt("ts", str(pd.Timestamp(end) + pd.Timedelta(days=1)))
-                    .order("ts")
-                    .range(offset, offset + 999)
-                    .execute()
-                )
-                batch = resp.data or []
-                rows.extend(batch)
-                if len(batch) < 1000:
-                    break
-                offset += 1000
+            rows = query(
+                f"SELECT {ctx_select} FROM {table} "
+                "WHERE ticker = %s AND ts >= %s AND ts < %s ORDER BY ts",
+                [ctx_ticker, start, end_plus],
+            )
 
             if not rows:
                 log.warning(f"  context {ctx_ticker}: sin datos — omitiendo")
@@ -124,15 +98,12 @@ def load_silver(cfg: dict) -> pd.DataFrame:
             ctx_df["ts"] = pd.to_datetime(ctx_df["ts"], utc=True)
             log.info(f"  context {ctx_ticker}: {len(ctx_df)} filas")
 
-            # Renombrar con prefijo
             rename_map = {c: f"{ctx_ticker}_{c}" for c in ctx_feature_cols if c in ctx_df.columns}
             ctx_df = ctx_df.rename(columns=rename_map)
             ctx_df = ctx_df.drop(columns=["ticker"], errors="ignore")
 
-            # Merge por timestamp
             result = result.merge(ctx_df, on="ts", how="left")
 
-        # Rellenar NaN de context con 0
         ctx_cols = [c for c in result.columns if any(c.startswith(f"{t}_") for t in context_tickers)]
         if ctx_cols:
             result[ctx_cols] = result[ctx_cols].fillna(0)
@@ -390,27 +361,21 @@ def save_results(cfg: dict, trades: list[dict], stats: dict) -> None:
         "guardrail_stats": json.dumps(stats["guardrail_stats"]),
     }
 
-    run_row = {
-        "name": name,
-        "tickers": json.dumps(cfg["data"]["tickers"]),
-        "test_start": cfg["data"]["test_start"],
-        "test_end": cfg["data"]["test_end"],
-        "modelos": json.dumps(cfg["modelos"]),
-        "guardrails": json.dumps(cfg.get("guardrails", {})),
-        "capital_inicial": cfg["capital"]["inicial"],
-    }
-
     # I-05: validar que los datos nuevos son insertables antes de borrar los viejos.
-    # Intentamos el insert del run primero (es la tabla más pequeña).
-    # Si falla, no borramos nada.
     try:
         # Paso 1: borrar datos anteriores de este backtest
-        sb.table("backtest_trades").delete().eq("backtest_name", name).execute()
-        sb.table("backtest_metrics").delete().eq("backtest_name", name).execute()
-        sb.table("backtest_runs").delete().eq("name", name).execute()
+        execute("DELETE FROM backtest_trades WHERE backtest_name = %s", [name])
+        execute("DELETE FROM backtest_metrics WHERE backtest_name = %s", [name])
+        execute("DELETE FROM backtest_runs WHERE name = %s", [name])
 
-        # Paso 2: insertar run (si falla aquí, solo perdimos datos del mismo nombre)
-        sb.table("backtest_runs").insert(run_row).execute()
+        # Paso 2: insertar run
+        execute(
+            """INSERT INTO backtest_runs (name, tickers, test_start, test_end, modelos, guardrails, capital_inicial)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            [name, json.dumps(cfg["data"]["tickers"]), cfg["data"]["test_start"],
+             cfg["data"]["test_end"], json.dumps(cfg["modelos"]),
+             json.dumps(cfg.get("guardrails", {})), cfg["capital"]["inicial"]],
+        )
 
         # Paso 3: insertar trades con tracking de fallos (F-04)
         inserted = 0
@@ -418,7 +383,7 @@ def save_results(cfg: dict, trades: list[dict], stats: dict) -> None:
         for i in range(0, len(trades_rows), 100):
             batch = trades_rows[i : i + 100]
             try:
-                sb.table("backtest_trades").insert(batch).execute()
+                upsert("backtest_trades", batch, conflict="backtest_name,ts_entrada,ticker")
                 inserted += len(batch)
             except Exception as e:
                 failed_batches += 1
@@ -431,9 +396,20 @@ def save_results(cfg: dict, trades: list[dict], stats: dict) -> None:
             )
 
         # Paso 4: insertar metrics
-        sb.table("backtest_metrics").insert(metrics_row).execute()
+        execute(
+            """INSERT INTO backtest_metrics
+               (backtest_name, capital_final, pnl_total, pnl_pct_total,
+                n_trades, n_wins, n_losses, win_rate, sharpe_ratio,
+                max_drawdown, guardrail_stats)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            [name, metrics_row["capital_final"], metrics_row["pnl_total"],
+             metrics_row["pnl_pct_total"], metrics_row["n_trades"],
+             metrics_row["n_wins"], metrics_row["n_losses"], metrics_row["win_rate"],
+             metrics_row["sharpe_ratio"], metrics_row["max_drawdown"],
+             metrics_row["guardrail_stats"]],
+        )
 
-        log.info(f"Resultados guardados en Supabase: {name}")
+        log.info(f"Resultados guardados en PostgreSQL: {name}")
 
     except Exception as e:
         log.error(f"Error fatal guardando backtest '{name}': {e}. Datos pueden estar incompletos.")

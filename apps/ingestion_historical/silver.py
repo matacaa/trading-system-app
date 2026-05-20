@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 
 from shared.config import cfg
-from shared.db import sb
+from shared.db import query, upsert
 from shared.indicators import (
     atr,
     bollinger,
@@ -53,28 +53,16 @@ def load_raw(ticker: str, interval: str) -> pd.DataFrame:
     table = RAW_TABLES[interval]
     since = (datetime.now(tz=UTC) - timedelta(days=WARMUP_DAYS + USEFUL_DAYS)).isoformat()
 
-    all_rows: list[dict] = []
-    offset = 0
-    while True:
-        resp = (
-            sb.table(table)
-            .select("ts,open,high,low,close,volume")
-            .eq("ticker", ticker)
-            .gte("ts", since)
-            .order("ts")
-            .range(offset, offset + 999)
-            .execute()
-        )
-        batch = resp.data or []
-        all_rows.extend(batch)
-        if len(batch) < 1000:
-            break
-        offset += 1000
+    rows = query(
+        f"SELECT ts, open, high, low, close, volume FROM {table} "
+        "WHERE ticker = %s AND ts >= %s ORDER BY ts",
+        [ticker, since],
+    )
 
-    if not all_rows:
+    if not rows:
         return pd.DataFrame()
 
-    df = pd.DataFrame(all_rows)
+    df = pd.DataFrame(rows)
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
     df = df.set_index("ts").sort_index()
     return df
@@ -156,16 +144,12 @@ def _compute_news_counts(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     try:
         ts_min = df.index.min() - pd.Timedelta(hours=24)
         ts_max = df.index.max()
-        resp = (
-            sb.table("silver_news_alpaca")
-            .select("published_at")
-            .eq("ticker", ticker)
-            .gte("published_at", ts_min.isoformat())
-            .lte("published_at", ts_max.isoformat())
-            .order("published_at")
-            .execute()
+        news_data = query(
+            "SELECT published_at FROM silver_news_alpaca "
+            "WHERE ticker = %s AND published_at >= %s AND published_at <= %s "
+            "ORDER BY published_at",
+            [ticker, ts_min.isoformat(), ts_max.isoformat()],
         )
-        news_data = resp.data or []
     except Exception:
         return df
 
@@ -228,7 +212,7 @@ def save_silver(df: pd.DataFrame, ticker: str, interval: str) -> int:
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
         try:
-            sb.table(table).upsert(batch, on_conflict="ticker,ts").execute()
+            upsert(table, batch, conflict="ticker,ts")
             inserted += len(batch)
         except Exception as e:
             log.error(f"  {ticker} [{interval}] error guardando batch: {e}")

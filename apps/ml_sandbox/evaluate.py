@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from apps.ml_sandbox.config import ExperimentConfig
-from shared.db import sb
+from shared.db import execute, query, upsert
 from shared.models.base import BaseModel
 
 log = logging.getLogger(__name__)
@@ -118,9 +118,7 @@ def save_predictions(
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
         try:
-            sb.table("silver_predictions").upsert(
-                batch, on_conflict="experiment_name,ticker,ts"
-            ).execute()
+            upsert("silver_predictions", batch, conflict="experiment_name,ticker,ts")
             inserted += len(batch)
         except Exception as e:
             log.error(f"Error guardando predicciones batch {i}: {e}")
@@ -147,9 +145,7 @@ def save_metrics(
     ]
     try:
         # F-60: on_conflict incluye model_name para evitar sobrescrituras incorrectas
-        sb.table("silver_metrics").upsert(
-            rows, on_conflict="experiment_name,ticker,metric_name"
-        ).execute()
+        upsert("silver_metrics", rows, conflict="experiment_name,ticker,metric_name")
         log.info(f"Métricas guardadas: {list(metrics.keys())}")
     except Exception as e:
         log.error(f"Error guardando métricas: {e}")
@@ -208,23 +204,23 @@ def run_evaluate(
 
     # F-57: merge con metrics_summary existente (no sobrescribir training_duration_s)
     try:
-        existing_resp = (
-            sb.table("silver_model_registry")
-            .select("metrics_summary")
-            .eq("experiment_name", cfg.experiment.name)
-            .eq("is_active", True)
-            .limit(1)
-            .execute()
+        existing_rows = query(
+            "SELECT metrics_summary FROM silver_model_registry "
+            "WHERE experiment_name = %s AND is_active = true LIMIT 1",
+            [cfg.experiment.name],
         )
         existing_metrics = {}
-        if existing_resp.data and existing_resp.data[0].get("metrics_summary"):
-            existing_metrics = json.loads(existing_resp.data[0]["metrics_summary"])
+        if existing_rows and existing_rows[0].get("metrics_summary"):
+            raw = existing_rows[0]["metrics_summary"]
+            existing_metrics = json.loads(raw) if isinstance(raw, str) else raw
 
         merged_metrics = {**existing_metrics, **metrics}
 
-        sb.table("silver_model_registry").update(
-            {"metrics_summary": json.dumps(merged_metrics), "status": "complete"}
-        ).eq("experiment_name", cfg.experiment.name).eq("is_active", True).execute()
+        execute(
+            "UPDATE silver_model_registry SET metrics_summary = %s, status = %s "
+            "WHERE experiment_name = %s AND is_active = true",
+            [json.dumps(merged_metrics), "complete", cfg.experiment.name],
+        )
         log.info("  Registry actualizado: status=complete, metrics guardadas")
     except Exception as e:
         log.warning(f"No se pudo actualizar metrics_summary/status: {e}")

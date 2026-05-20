@@ -35,10 +35,6 @@ class ExperimentConfig:
     def __init__(self, raw: dict):
         self._raw = raw
 
-        # ── Credenciales (de shared.config) ────────────────────
-        self.supabase_url = app_cfg.supabase_url
-        self.supabase_key = app_cfg.supabase_key
-
         # ── Paths (de shared.config) ───────────────────────────
         self.models_dir = app_cfg.models_dir
         self.tensors_dir = app_cfg.tensors_dir
