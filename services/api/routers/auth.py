@@ -73,7 +73,8 @@ async def register(req: RegisterRequest):
         )
 
     # Verificar que el email no existe
-    existing = query_one("SELECT id FROM users WHERE email = %s", [req.email])
+    email_lower = req.email.lower()
+    existing = query_one("SELECT id FROM users WHERE LOWER(email) = %s", [email_lower])
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -88,7 +89,7 @@ async def register(req: RegisterRequest):
         """INSERT INTO users (email, password_hash, display_name, referral_code)
            VALUES (%s, %s, %s, %s)
            RETURNING id, email, plan""",
-        [req.email, hashed, req.display_name, referral_code],
+        [email_lower, hashed, req.display_name, referral_code],
     )
 
     if not user:
@@ -128,11 +129,12 @@ async def login(req: LoginRequest):
     """Login con email + password. Devuelve access + refresh tokens."""
 
     user = query_one(
-        "SELECT id, email, password_hash, plan, is_active FROM users WHERE email = %s",
+        "SELECT id, email, password_hash, plan, is_active FROM users WHERE LOWER(email) = LOWER(%s)",
         [req.email],
     )
 
     if not user:
+        log.warning("Login fallido — email no encontrado: %s", req.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email o contraseña incorrectos",
@@ -145,6 +147,7 @@ async def login(req: LoginRequest):
         )
 
     if not verify_password(req.password, user["password_hash"]):
+        log.warning("Login fallido — password incorrecto para: %s", user["email"])
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email o contraseña incorrectos",

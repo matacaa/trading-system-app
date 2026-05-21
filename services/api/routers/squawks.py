@@ -14,9 +14,10 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from services.api.auth.dependencies import get_active_user, get_current_user
-from shared.db import query
+from shared.db import execute, query
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -81,6 +82,20 @@ async def list_squawks(
     return {"squawks": rows or []}
 
 
+@router.get("/squawks/unread")
+async def unread_counts(user: dict = Depends(get_active_user)):
+    """Conteo de squawks no leídos por ticker para badges del sidebar."""
+    rows = query(
+        """SELECT ticker, COUNT(*) as count
+           FROM gold_squawks
+           WHERE is_read = false AND is_dismissed = false
+           GROUP BY ticker ORDER BY ticker""",
+    )
+    return {
+        "unread": {r["ticker"]: r["count"] for r in (rows or [])},
+    }
+
+
 @router.get("/squawks/{squawk_id}")
 async def get_squawk(squawk_id: str, user: dict = Depends(get_current_user)):
     """Detalle de un squawk."""
@@ -103,3 +118,44 @@ async def get_squawk_audio(squawk_id: str, user: dict = Depends(get_current_user
         "audio_url": rows[0].get("audio_url"),
         "audio_duration": rows[0].get("audio_duration"),
     }
+
+
+class SquawkUpdate(BaseModel):
+    is_read: bool | None = None
+    is_favorite: bool | None = None
+    is_dismissed: bool | None = None
+
+
+@router.patch("/squawks/{squawk_id}")
+async def update_squawk(
+    squawk_id: str,
+    body: SquawkUpdate,
+    user: dict = Depends(get_current_user),
+):
+    """Actualizar flags de un squawk (leído, favorito, descartado)."""
+    rows = query("SELECT id FROM gold_squawks WHERE id = %s", [squawk_id])
+    if not rows:
+        raise HTTPException(404, "Squawk no encontrado")
+
+    updates: list[str] = []
+    params: list[Any] = []
+
+    if body.is_read is not None:
+        updates.append("is_read = %s")
+        params.append(body.is_read)
+    if body.is_favorite is not None:
+        updates.append("is_favorite = %s")
+        params.append(body.is_favorite)
+    if body.is_dismissed is not None:
+        updates.append("is_dismissed = %s")
+        params.append(body.is_dismissed)
+
+    if not updates:
+        return {"updated": False, "message": "Nada que actualizar"}
+
+    params.append(squawk_id)
+    execute(
+        f"UPDATE gold_squawks SET {', '.join(updates)} WHERE id = %s",
+        params,
+    )
+    return {"updated": True, "id": squawk_id}
