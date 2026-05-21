@@ -1,0 +1,47 @@
+# Backtest y configuración de ensemble activo
+# Migrar desde ml-sandbox/config/backtest_v1.yaml
+
+backtest:
+  name: "aapl_backtest_v1"
+  description: "Backtest AAPL con solo stop-loss y take-profit"
+
+data:
+  tickers:
+    - "AAPL"
+  test_start: "2026-04-10"
+  test_end: "2026-04-14"
+  timeframe: "1m"
+
+modelos:
+  - experiment_name: "aapl_xgboost_1m_v1"
+    activo: true
+    peso: 0.20
+  - experiment_name: "aapl_rf_1m_v1"
+    activo: true
+    peso: 0.20
+  - experiment_name: "aapl_lgbm_1m_v1"
+    activo: true
+    peso: 0.20
+  - experiment_name: "aapl_lstm_1m_v1"
+    activo: true
+    peso: 0.15
+  - experiment_name: "aapl_gru_1m_v1"
+    activo: true
+    peso: 0.15
+  - experiment_name: "aapl_transformer_1m_v1"
+    activo: true
+    peso: 0.10
+
+capital:
+  inicial: 100000
+  posicion_max_pct: 10
+  stop_loss_pct: 5
+  take_profit_pct: 10
+  cierre_fin_dia: true
+
+guardrails:
+  # F-21: score_threshold configurable (antes hardcoded 50)
+  score_threshold: 50
+  # Solo posicion_abierta activa por defecto
+  posicion_abierta:
+    activo: true

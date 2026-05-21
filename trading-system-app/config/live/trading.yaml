@@ -1,0 +1,8 @@
+# Configuración del pipeline live
+
+pipeline:
+  interval_minutes: 1
+  timeframe: "1m"
+
+# Ensemble activo — DEBE apuntar a config/live/, NO a config/backtests/
+active_ensemble_config: "config/live/ensemble.yaml"

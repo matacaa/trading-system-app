@@ -1,0 +1,12 @@
+# Lista de tickers activos del sistema
+# Actualmente: solo AAPL en pruebas
+# Objetivo: 16 tickers
+
+tickers:
+  - ticker: AAPL
+    category: acciones
+    exchange: NASDAQ
+    active: true
+
+# Placeholders para los otros 15 tickers planeados
+# (añadir aquí cuando se activen)
