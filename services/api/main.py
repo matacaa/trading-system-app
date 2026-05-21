@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
+from services.api.middleware.rate_limiter import RateLimitMiddleware
 from services.api.routers import (
     auth,
     backtest,
@@ -34,6 +35,7 @@ from services.api.routers import (
     preferences,
     signals,
     squawks,
+    stripe,
     tickers,
     trading,
     training,
@@ -42,7 +44,7 @@ from services.api.routers import (
 log = logging.getLogger("api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
-app = FastAPI(title="Squawks ML API", version="6.0.0")
+app = FastAPI(title="Squawks ML API", version="7.0.0")
 
 # CORS
 _cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -52,6 +54,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate Limiting (después de CORS para que los preflight OPTIONS no se limiten)
+app.add_middleware(RateLimitMiddleware)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(health.router,        tags=["Health"])
@@ -67,6 +72,7 @@ app.include_router(live.router,          prefix="/api", tags=["Live"])
 app.include_router(trading.router,       prefix="/api", tags=["Trading"])
 app.include_router(signals.router,       prefix="/api", tags=["Signals"])
 app.include_router(squawks.router,       prefix="/api", tags=["Squawks"])
+app.include_router(stripe.router,        prefix="/api", tags=["Stripe"])
 # NOTA: training_jobs.py existe pero sus endpoints ya están en training.py
 
 

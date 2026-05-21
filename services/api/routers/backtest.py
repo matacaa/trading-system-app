@@ -23,7 +23,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from services.api.auth.dependencies import get_current_user
+from services.api.auth.dependencies import get_active_user, get_current_user
 from shared.db import get_conn, query
 from shared.plan_limits import get_plan_limits, is_guardrail_available
 
@@ -174,7 +174,7 @@ def _run_backtest_sync(req: BacktestRequest) -> dict:
 
 
 @router.post("/backtest")
-async def run_backtest(req: BacktestRequest, user: dict = Depends(get_current_user)):
+async def run_backtest(req: BacktestRequest, user: dict = Depends(get_active_user)):
     """Lanza un nuevo backtest con validaciones de plan."""
     errors = _validate_backtest(req, user)
     if errors:

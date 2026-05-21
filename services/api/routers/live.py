@@ -16,7 +16,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from services.api.auth.dependencies import get_current_user
+from services.api.auth.dependencies import get_active_user, get_current_user
 from shared.db import get_conn, query
 
 log = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ async def get_live_config(user: dict = Depends(get_current_user)):
 
 
 @router.post("/live/config")
-async def set_live_config(body: LiveEnsembleConfig, user: dict = Depends(get_current_user)):
+async def set_live_config(body: LiveEnsembleConfig, user: dict = Depends(get_active_user)):
     """Escribe config del ensemble a DB (antes era a YAML en disco)."""
     user_id = user["id"]
 

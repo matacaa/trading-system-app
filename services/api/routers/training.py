@@ -20,7 +20,7 @@ from datetime import UTC, date, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from services.api.auth.dependencies import get_current_user
+from services.api.auth.dependencies import get_active_user, get_current_user
 from shared.db import get_conn, query
 from shared.model_type_registry import get_model_type, validate_hyperparameters
 from shared.plan_limits import get_plan_limits
@@ -168,7 +168,7 @@ def _run_training_sync(req: TrainRequest) -> dict:
 
 
 @router.post("/train")
-async def train_model(req: TrainRequest, user: dict = Depends(get_current_user)):
+async def train_model(req: TrainRequest, user: dict = Depends(get_active_user)):
     """Lanza un nuevo entrenamiento con validaciones de plan."""
     errors = _validate_train(req, user)
     if errors:

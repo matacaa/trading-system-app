@@ -13,7 +13,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from services.api.auth.dependencies import get_current_user
+from services.api.auth.dependencies import get_active_user
 from shared.db import execute, query_one
 from shared.plan_limits import get_plan_limits
 
@@ -32,7 +32,7 @@ class ActivateRequest(BaseModel):
 
 
 @router.put("/preferences/tickers")
-async def update_tickers(body: TickerAction, user: dict = Depends(get_current_user)):
+async def update_tickers(body: TickerAction, user: dict = Depends(get_active_user)):
     """Añadir o quitar un ticker de los seguidos."""
     plan = user.get("plan", "trial")
     limits = get_plan_limits(plan)
@@ -103,7 +103,7 @@ async def update_tickers(body: TickerAction, user: dict = Depends(get_current_us
 async def activate_ticker(
     ticker: str,
     body: ActivateRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(get_active_user),
 ):
     """
     Activa squawks para un ticker copiando config de un backtest.

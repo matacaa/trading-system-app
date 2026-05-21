@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from services.api.auth.dependencies import get_current_user
+from services.api.auth.dependencies import get_active_user, get_current_user
 from shared.db import query
 
 log = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ router = APIRouter()
 
 @router.get("/squawks")
 async def list_squawks(
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(get_active_user),
     ticker: str | None = Query(None, description="Filtrar por ticker"),
     since: str | None = Query(None, description="Timestamp ISO para polling incremental"),
     count_only: bool = Query(False, description="Solo devolver count (para badges)"),

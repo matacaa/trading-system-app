@@ -103,6 +103,12 @@ async def register(req: RegisterRequest):
         [str(user["id"])],
     )
 
+    # Crear user_credits (para packs extra)
+    execute(
+        "INSERT INTO user_credits (user_id) VALUES (%s) ON CONFLICT DO NOTHING",
+        [str(user["id"])],
+    )
+
     log.info("Nuevo usuario registrado: %s (plan: %s)", user["email"], user["plan"])
 
     # Generar tokens

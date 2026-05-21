@@ -47,6 +47,7 @@ _ALLOWED_TABLES = frozenset({
     "ticker_universe", "guardrail_registry", "plan_config",
     "training_jobs", "model_type_registry", "user_credits",
     "users", "user_preferences", "config",
+    "subscriptions", "stripe_events",
 })
 
 log = logging.getLogger(__name__)

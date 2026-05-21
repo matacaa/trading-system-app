@@ -66,6 +66,27 @@ async def get_current_user(
     }
 
 
+async def get_active_user(
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Dependency que valida JWT + verifica que el plan está activo.
+
+    Para usuarios trial, verifica que el período de prueba no haya expirado.
+    Usar en endpoints que requieren plan activo (backtest, training, squawks, etc).
+
+    Uso en routers:
+        from services.api.auth.dependencies import get_active_user
+
+        @router.post("/algo")
+        async def algo(user: dict = Depends(get_active_user)):
+            ...
+    """
+    from shared.plan_limits import enforce_active_plan
+
+    enforce_active_plan(user["id"], user["plan"])
+    return user
+
+
 async def get_optional_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme_optional),
 ) -> dict | None:

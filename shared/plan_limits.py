@@ -174,3 +174,66 @@ def invalidate_cache() -> None:
     global _cache, _cache_ts
     _cache = {}
     _cache_ts = 0.0
+
+
+def check_trial_expired(user_id: str) -> bool:
+    """True si el usuario tiene trial expirado.
+
+    Si el trial ha expirado, marca is_active=false en DB.
+    Los usuarios con plan != 'trial' siempre retornan False.
+    """
+    from shared.db import execute, query_one
+
+    row = query_one(
+        "SELECT plan, trial_end, is_active FROM users WHERE id = %s",
+        [user_id],
+    )
+    if not row:
+        return True  # usuario no encontrado = no válido
+
+    # Solo aplica a trial
+    if row["plan"] != "trial":
+        return False
+
+    # ¿Expiró?
+    from datetime import UTC, datetime
+
+    trial_end = row.get("trial_end")
+    if trial_end is None:
+        return False
+
+    # Asegurar timezone-aware comparison
+    now = datetime.now(UTC)
+    if hasattr(trial_end, "tzinfo") and trial_end.tzinfo is None:
+        trial_end = trial_end.replace(tzinfo=UTC)
+
+    if now > trial_end:
+        # Marcar como inactivo si no lo está ya
+        if row.get("is_active", True):
+            execute(
+                "UPDATE users SET is_active = false WHERE id = %s",
+                [user_id],
+            )
+            log.info("Trial expirado para usuario %s", user_id)
+        return True
+
+    return False
+
+
+def enforce_active_plan(user_id: str, plan: str) -> None:
+    """Raise HTTP 403 si el usuario tiene trial expirado.
+
+    Llamar desde endpoints protegidos que requieren plan activo.
+    """
+    if plan == "trial" and check_trial_expired(user_id):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "trial_expired",
+                "message": (
+                    "Tu período de prueba ha expirado. "
+                    "Suscríbete a un plan para continuar."
+                ),
+            },
+        )
+
