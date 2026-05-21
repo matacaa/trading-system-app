@@ -75,6 +75,14 @@ class _Config:
         # ─── Batch sizes / límites ─────────────────
         self.batch_insert: int = int(os.getenv("BATCH_INSERT", "500"))
 
+        # ─── Redis (opcional, para cache) ─────────────
+        self.redis_url: str = os.getenv("REDIS_URL", "")
+
+        # ─── PgBouncer ───────────────────────────────
+        # Si PgBouncer está activo, DATABASE_URL ya apunta al puerto 6432.
+        # pool_size se reduce porque PgBouncer gestiona el pooling.
+        self.pgbouncer_enabled: bool = ":6432" in self.database_url
+
     @staticmethod
     def _require(key: str) -> str:
         """Exige que la variable exista y no esté vacía."""

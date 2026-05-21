@@ -5,6 +5,10 @@ Connection pool PostgreSQL compartido por todo el monorepo.
 Reemplaza el antiguo cliente Supabase con conexión directa
 a Azure PostgreSQL via psycopg2.
 
+Compatible con PgBouncer (transaction mode, puerto 6432):
+    - Si PgBouncer detectado, pool local se reduce (PgBouncer poolea)
+    - No usa PREPARE ni SET session-level
+
 Uso:
     from shared.db import query, execute, upsert
 
@@ -36,7 +40,8 @@ from shared.config import cfg
 _ALLOWED_TABLES = frozenset({
     "gold_squawks", "gold_signals", "gold_decisions", "gold_trades",
     "gold_logs", "gold_pipeline_timings",
-    "raw_ohlcv_rt", "silver_features_rt", "silver_model_registry",
+    "raw_ohlcv_rt", "raw_news_rt", "silver_features_rt",
+    "silver_model_registry", "silver_news_alpaca",
     "silver_predictions", "silver_metrics",
     "backtest_runs", "backtest_trades", "backtest_metrics",
     "ticker_universe", "guardrail_registry", "plan_config",
@@ -57,11 +62,21 @@ _BACKOFF_BASE = 0.5  # 0.5s, 1s, 2s
 
 @lru_cache(maxsize=1)
 def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
-    """Crea el pool una sola vez por proceso. Min 2, max 10 conexiones."""
+    """Crea el pool una sola vez por proceso.
+
+    Si PgBouncer está activo (puerto 6432), se reduce el pool local
+    porque PgBouncer ya gestiona el pooling de conexiones.
+    """
+    if cfg.pgbouncer_enabled:
+        minconn, maxconn = 1, 5
+        log.info("PgBouncer detectado (puerto 6432) — pool reducido: %d-%d", minconn, maxconn)
+    else:
+        minconn, maxconn = 2, 10
+
     log.info("Inicializando pool PostgreSQL: %s", cfg.database_host)
     return psycopg2.pool.ThreadedConnectionPool(
-        minconn=2,
-        maxconn=10,
+        minconn=minconn,
+        maxconn=maxconn,
         dsn=cfg.database_url,
     )
 
