@@ -181,12 +181,12 @@ export default function BillingPage() {
                 {subscription.plan}
               </span>
             </p>
-            {subscription.period_end && (
+            {subscription.current_period_end && (
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                 {subscription.cancel_at_period_end
                   ? "Se cancelará el"
                   : "Próxima renovación:"}{" "}
-                {new Date(subscription.period_end).toLocaleDateString("es-ES")}
+                {new Date(subscription.current_period_end).toLocaleDateString("es-ES")}
               </p>
             )}
           </div>

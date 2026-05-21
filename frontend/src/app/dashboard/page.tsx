@@ -1,212 +1,625 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Bell, BellRing, Filter, RefreshCw, Zap } from "lucide-react";
-import { useSquawks } from "@/hooks/use-squawks";
-import { useNotifications, useTabBadge } from "@/hooks/use-notifications";
+import { useEffect, useState, useCallback } from "react";
+import {
+  ChevronLeft,
+  Pause,
+  Play,
+  Plus,
+  Power,
+  RefreshCw,
+  Search,
+  Volume2,
+  X,
+  Zap,
+} from "lucide-react";
+import api from "@/lib/api";
+import { useAuthStore } from "@/lib/store";
+import { PLAN_LIMITS } from "@/lib/types";
+import type { Squawk, Backtest, TickerInfo } from "@/lib/types";
 import SquawkCard from "@/components/squawk-card";
 import SquawkDetail from "@/components/squawk-detail";
 
-const PRIORITIES = ["all", "high", "medium", "low"] as const;
-
 export default function DashboardPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [filterPriority, setFilterPriority] = useState<string>("all");
+  const { user, preferences, fetchMe } = useAuthStore();
+  const plan = user?.plan || "trial";
+  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.trial;
+
+  // Tickers state
+  const tickers: string[] = Array.isArray(preferences?.tickers)
+    ? preferences!.tickers
+    : [];
+  const [activeTicker, setActiveTicker] = useState<string>(tickers[0] || "");
+  const [tickerOn, setTickerOn] = useState<Record<string, boolean>>(() => {
+    const s: Record<string, boolean> = {};
+    tickers.forEach((t) => (s[t] = true));
+    return s;
+  });
+
+  // Add ticker flow
+  const [addOpen, setAddOpen] = useState(false);
+  const [addStep, setAddStep] = useState<"search" | "backtests">("search");
+  const [addSearch, setAddSearch] = useState("");
+  const [addTicker, setAddTicker] = useState<string | null>(null);
+  const [universeResults, setUniverseResults] = useState<TickerInfo[]>([]);
+  const [addBacktests, setAddBacktests] = useState<Backtest[]>([]);
+
+  // Squawks
+  const [squawks, setSquawks] = useState<Squawk[]>([]);
+  const [squawkCounts, setSquawkCounts] = useState<Record<string, number>>({});
+  const [loadingSquawks, setLoadingSquawks] = useState(false);
+  const [selectedSquawk, setSelectedSquawk] = useState<Squawk | null>(null);
   const [showDetail, setShowDetail] = useState(false);
 
-  const { squawks, loading, error, newCount, clearNewCount, refresh } =
-    useSquawks({
-      priority: filterPriority === "all" ? undefined : filterPriority,
-      pollInterval: 10_000,
-    });
+  // Toast
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
 
-  const { permission, requestPermission, sendNotification } = useNotifications();
-  useTabBadge(newCount);
-
-  // Send browser notification when new high-priority squawks arrive
+  // Sync tickers from preferences
   useEffect(() => {
-    if (newCount > 0) {
-      const latest = squawks[0];
-      if (latest?.priority === "high") {
-        sendNotification(`${latest.ticker} — ${latest.direction}`, {
-          body: latest.title,
-          tag: latest.id,
+    if (preferences?.tickers && Array.isArray(preferences.tickers)) {
+      setTickerOn((prev) => {
+        const next: Record<string, boolean> = {};
+        preferences.tickers.forEach((t: string) => {
+          next[t] = prev[t] !== undefined ? prev[t] : true;
         });
+        return next;
+      });
+      if (!activeTicker && preferences.tickers.length > 0) {
+        setActiveTicker(preferences.tickers[0]);
       }
     }
-  }, [newCount, squawks, sendNotification]);
+  }, [preferences?.tickers, activeTicker]);
 
-  const selected = squawks.find((s) => s.id === selectedId) || null;
+  // Fetch squawks for active ticker
+  const fetchSquawks = useCallback(async () => {
+    if (!activeTicker) return;
+    setLoadingSquawks(true);
+    try {
+      const { data } = await api.get("/api/squawks", {
+        params: { ticker: activeTicker, limit: 50 },
+      });
+      setSquawks(data.squawks || []);
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingSquawks(false);
+    }
+  }, [activeTicker]);
 
-  const handleSelect = (id: string) => {
-    setSelectedId(id);
-    setShowDetail(true);
+  useEffect(() => {
+    fetchSquawks();
+  }, [fetchSquawks]);
+
+  // Fetch unread counts
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const { data } = await api.get("/api/squawks", {
+          params: { count_only: true },
+        });
+        setSquawkCounts(data.by_ticker || {});
+      } catch {
+        /* ignore */
+      }
+    };
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 15_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Search universe
+  useEffect(() => {
+    if (!addOpen || addStep !== "search") return;
+    const search = async () => {
+      try {
+        const { data } = await api.get("/api/tickers/universe", {
+          params: { search: addSearch || undefined, limit: 30 },
+        });
+        setUniverseResults(
+          (data.tickers || []).filter(
+            (t: TickerInfo) => !tickers.includes(t.ticker)
+          )
+        );
+      } catch {
+        /* ignore */
+      }
+    };
+    const timeout = setTimeout(search, 300);
+    return () => clearTimeout(timeout);
+  }, [addSearch, addOpen, addStep, tickers]);
+
+  // Fetch backtests for selected add-ticker
+  useEffect(() => {
+    if (!addTicker) return;
+    const fetch = async () => {
+      try {
+        const { data } = await api.get("/api/backtest/list", {
+          params: { ticker: addTicker },
+        });
+        setAddBacktests(data.backtests || []);
+      } catch {
+        /* ignore */
+      }
+    };
+    fetch();
+  }, [addTicker]);
+
+  const activeCount = Object.values(tickerOn).filter(Boolean).length;
+  const remaining = limits.max_tickers - activeCount;
+
+  const handleToggleTicker = (t: string) => {
+    setTickerOn((prev) => ({ ...prev, [t]: !prev[t] }));
   };
 
-  const handleRefresh = () => {
-    clearNewCount();
-    refresh();
+  const handleAddOpen = () => {
+    if (remaining <= 0 && !addOpen) {
+      showToast("Límite de tickers alcanzado. Desactiva uno o compra un pack extra.");
+      return;
+    }
+    setAddOpen(!addOpen);
+    setAddStep("search");
+    setAddSearch("");
+    setAddTicker(null);
   };
 
-  return (
-    <div className="h-[calc(100vh-3rem)] flex flex-col lg:flex-row gap-4 lg:gap-5">
-      {/* ── Left: Squawk List ──────────────────────────────────────────────── */}
+  const handleSelectAddTicker = (ticker: string) => {
+    setAddTicker(ticker);
+    setAddStep("backtests");
+  };
+
+  const handleActivateWithBacktest = async (backtestId: string, btName: string) => {
+    if (!addTicker) return;
+    try {
+      await api.post(`/api/preferences/tickers/${addTicker}/activate`, {
+        backtest_id: backtestId,
+      });
+      showToast(`✓ ${addTicker} activado con "${btName}"`);
+      setAddOpen(false);
+      setAddTicker(null);
+      setActiveTicker(addTicker);
+      fetchMe();
+    } catch {
+      showToast("Error al activar ticker");
+    }
+  };
+
+  const unread = (t: string) => squawkCounts[t] || 0;
+  const hasBuy = (t: string) =>
+    t === activeTicker &&
+    squawks.some((s) => s.direction === "LONG" && !s.is_read);
+
+  // Sidebar
+  const sidebar = (
+    <div
+      className="w-[220px] min-w-[220px] flex flex-col overflow-hidden"
+      style={{
+        background: "rgba(0,0,0,0.4)",
+        backdropFilter: "blur(20px)",
+        borderRight: "1px solid var(--border-glass)",
+      }}
+    >
+      {/* Header */}
       <div
-        className={`w-full lg:w-[400px] flex-shrink-0 flex flex-col glass-card overflow-hidden ${showDetail ? "hidden lg:flex" : "flex"}`}
-        style={{ maxHeight: "100%" }}
+        className="px-3 py-3 flex items-center justify-between"
+        style={{ borderBottom: "1px solid var(--border-glass)" }}
       >
-        {/* Header */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>
+            Tickers
+          </span>
+          <span
+            className="text-[0.6rem] px-1.5 py-0.5 rounded font-mono"
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              color: "var(--text-muted)",
+            }}
+          >
+            {activeCount}/{limits.max_tickers}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {remaining > 0 && (
+            <span
+              className="text-[0.6rem] px-1.5 py-0.5 rounded font-semibold"
+              style={{
+                background: "var(--accent-cyan-dim)",
+                color: "var(--accent-cyan)",
+              }}
+            >
+              {remaining} disp.
+            </span>
+          )}
+          <button
+            onClick={handleAddOpen}
+            className="w-6 h-6 rounded-md flex items-center justify-center text-sm transition-colors"
+            style={{
+              border: "1px solid var(--border-glass-hover)",
+              background: addOpen ? "var(--accent-cyan-dim)" : "transparent",
+              color: remaining <= 0 ? "var(--text-muted)" : "var(--accent-cyan)",
+              cursor: remaining <= 0 && !addOpen ? "default" : "pointer",
+            }}
+          >
+            {addOpen ? <X size={12} /> : <Plus size={12} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Add ticker flow */}
+      {addOpen && addStep === "search" && (
         <div
-          className="flex items-center justify-between px-4 py-3"
+          className="p-2 space-y-1"
           style={{ borderBottom: "1px solid var(--border-glass)" }}
         >
-          <div className="flex items-center gap-2">
-            <Zap size={18} style={{ color: "var(--accent-cyan)" }} />
-            <h2
-              className="text-sm font-semibold"
-              style={{ color: "var(--text-primary)" }}
+          <div className="relative">
+            <input
+              type="text"
+              value={addSearch}
+              onChange={(e) => setAddSearch(e.target.value)}
+              placeholder="Buscar ticker..."
+              className="input-glass text-xs pl-7 py-1.5"
+              autoFocus
+            />
+            <Search
+              size={12}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2"
+              style={{ color: "var(--text-muted)" }}
+            />
+          </div>
+          <div className="max-h-44 overflow-y-auto">
+            {universeResults.map((u) => (
+              <button
+                key={u.ticker}
+                onClick={() => handleSelectAddTicker(u.ticker)}
+                className="w-full text-left px-2 py-1.5 text-xs flex justify-between rounded transition-colors"
+                style={{ color: "var(--text-primary)" }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "var(--bg-glass-hover)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                <span>
+                  <b>{u.ticker}</b>{" "}
+                  <span style={{ color: "var(--text-muted)" }}>{u.name}</span>
+                </span>
+                <span style={{ color: "var(--text-muted)", fontSize: "0.6rem" }}>
+                  {u.sector}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {addOpen && addStep === "backtests" && addTicker && (
+        <div
+          className="p-2 space-y-2"
+          style={{ borderBottom: "1px solid var(--border-glass)" }}
+        >
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => {
+                setAddStep("search");
+                setAddTicker(null);
+              }}
+              className="text-xs flex items-center gap-1"
+              style={{ color: "var(--accent-cyan)", background: "none", border: "none", cursor: "pointer" }}
             >
-              Squawks
-            </h2>
-            {newCount > 0 && (
-              <span
-                className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full"
+              <ChevronLeft size={12} /> Volver
+            </button>
+            <span className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>
+              {addTicker}
+            </span>
+          </div>
+          {addBacktests.length > 0 ? (
+            <>
+              <p className="text-[0.65rem]" style={{ color: "var(--text-muted)" }}>
+                Selecciona backtest:
+              </p>
+              {addBacktests.map((bt) => (
+                <button
+                  key={bt.id}
+                  onClick={() => handleActivateWithBacktest(bt.id, bt.name)}
+                  className="w-full text-left glass-card p-2 rounded-lg cursor-pointer transition-colors"
+                  style={{ border: "1px solid var(--border-glass)" }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.borderColor = "var(--accent-cyan)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.borderColor = "var(--border-glass)")
+                  }
+                >
+                  <div className="flex justify-between text-xs">
+                    <b>{bt.name}</b>
+                    {bt.pnl_pct != null && (
+                      <span
+                        style={{
+                          color:
+                            bt.pnl_pct >= 0
+                              ? "var(--accent-emerald)"
+                              : "var(--accent-red)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {bt.pnl_pct >= 0 ? "+" : ""}
+                        {bt.pnl_pct.toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[0.6rem]" style={{ color: "var(--text-muted)" }}>
+                    {bt.direction} · {bt.date_from} → {bt.date_to}
+                    {bt.win_rate != null && ` · WR ${(bt.win_rate * 100).toFixed(0)}%`}
+                  </div>
+                </button>
+              ))}
+              <a
+                href="/dashboard/backtest"
+                className="block w-full text-center text-[0.65rem] py-1.5 rounded-md"
+                style={{
+                  border: "1px dashed var(--border-glass-hover)",
+                  color: "var(--accent-cyan)",
+                }}
+              >
+                + Crear backtest nuevo
+              </a>
+            </>
+          ) : (
+            <div className="text-center py-4">
+              <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+                No hay backtests para {addTicker}
+              </p>
+              <a
+                href="/dashboard/backtest"
+                className="inline-block px-4 py-1.5 rounded-md text-xs font-medium"
                 style={{
                   background: "var(--accent-cyan)",
                   color: "white",
                 }}
               >
-                {newCount}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {permission !== "granted" && (
-              <button
-                onClick={requestPermission}
-                className="p-1.5 rounded-lg transition-colors"
-                style={{ color: "var(--accent-amber)" }}
-                title="Activar notificaciones"
-              >
-                <BellRing size={14} />
-              </button>
-            )}
-            <button
-              onClick={handleRefresh}
-              className="p-1.5 rounded-lg transition-colors"
-              style={{ color: "var(--text-muted)" }}
-              title="Refrescar"
-            >
-              <RefreshCw size={14} className={loading ? "spin-slow" : ""} />
-            </button>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div
-          className="flex items-center gap-1.5 px-4 py-2"
-          style={{ borderBottom: "1px solid var(--border-glass)" }}
-        >
-          <Filter
-            size={12}
-            style={{ color: "var(--text-muted)" }}
-          />
-          {PRIORITIES.map((p) => (
-            <button
-              key={p}
-              onClick={() => setFilterPriority(p)}
-              className="text-[0.65rem] font-medium px-2.5 py-1 rounded-md transition-all"
-              style={{
-                background:
-                  filterPriority === p
-                    ? "var(--accent-cyan-dim)"
-                    : "transparent",
-                color:
-                  filterPriority === p
-                    ? "var(--accent-cyan)"
-                    : "var(--text-muted)",
-              }}
-            >
-              {p === "all" ? "Todos" : p.charAt(0).toUpperCase() + p.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {loading && squawks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div className="spin-slow w-6 h-6 border-2 border-[var(--accent-cyan)] border-t-transparent rounded-full" />
-              <span
-                className="text-xs"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Cargando squawks...
-              </span>
+                Crear backtest
+              </a>
             </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-2">
-              <p
-                className="text-sm"
-                style={{ color: "var(--accent-red)" }}
-              >
-                {error}
-              </p>
-              <button onClick={handleRefresh} className="btn-secondary text-xs">
-                Reintentar
-              </button>
-            </div>
-          ) : squawks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Bell
-                size={32}
-                style={{ color: "var(--text-muted)", opacity: 0.3 }}
-              />
-              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                No hay squawks todavía
-              </p>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                Aparecerán aquí cuando el sistema detecte oportunidades
-              </p>
-            </div>
-          ) : (
-            squawks.map((s) => (
-              <SquawkCard
-                key={s.id}
-                squawk={s}
-                selected={selectedId === s.id}
-                onSelect={handleSelect}
-              />
-            ))
           )}
         </div>
-      </div>
+      )}
 
-      {/* ── Right: Detail Panel ────────────────────────────────────────────── */}
-      <div className={`flex-1 glass-card overflow-y-auto p-4 lg:p-6 ${showDetail ? "flex flex-col" : "hidden lg:flex lg:flex-col"}`}>
-        {selected ? (
-          <>
-            <button
-              onClick={() => setShowDetail(false)}
-              className="lg:hidden mb-3 text-xs flex items-center gap-1"
-              style={{ color: "var(--accent-cyan)" }}
+      {/* Ticker list */}
+      <div className="flex-1 overflow-y-auto">
+        {tickers.map((t) => {
+          const isOn = tickerOn[t] !== false;
+          const ur = unread(t);
+          const buy = hasBuy(t);
+          const dotColor = !isOn
+            ? "var(--text-muted)"
+            : buy
+              ? "var(--accent-emerald)"
+              : ur > 0
+                ? "var(--accent-cyan)"
+                : "var(--text-muted)";
+
+          return (
+            <div
+              key={t}
+              className="flex items-center"
+              style={{
+                background:
+                  activeTicker === t ? "rgba(255,255,255,0.06)" : "transparent",
+                borderLeft:
+                  activeTicker === t
+                    ? "2px solid var(--accent-cyan)"
+                    : "2px solid transparent",
+              }}
             >
-              ← Volver a la lista
-            </button>
-            <SquawkDetail squawk={selected} />
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <Zap
-              size={40}
-              style={{ color: "var(--text-muted)", opacity: 0.2 }}
-            />
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Selecciona un squawk para ver el detalle
+              <button
+                onClick={() => {
+                  setActiveTicker(t);
+                  setSelectedSquawk(null);
+                  setShowDetail(false);
+                }}
+                className="flex items-center gap-2 flex-1 px-3 py-2.5 text-left"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color:
+                    activeTicker === t
+                      ? "var(--text-primary)"
+                      : "var(--text-muted)",
+                }}
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style={{ background: dotColor }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div
+                    className="text-xs"
+                    style={{
+                      fontWeight: activeTicker === t ? 600 : 400,
+                    }}
+                  >
+                    {t}
+                  </div>
+                  <div className="text-[0.6rem]" style={{ color: "var(--text-muted)" }}>
+                    {isOn
+                      ? `${squawkCounts[t] || 0} squawks`
+                      : "pausado"}
+                  </div>
+                </div>
+                {isOn && ur > 0 && (
+                  <span
+                    className="text-[0.6rem] px-1.5 py-0.5 rounded"
+                    style={{
+                      background: "var(--accent-cyan)",
+                      color: "white",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {ur}
+                  </span>
+                )}
+              </button>
+              <div className="pr-2">
+                <button
+                  onClick={() => handleToggleTicker(t)}
+                  className="w-8 h-5 rounded-full relative"
+                  style={{
+                    background: isOn
+                      ? "var(--accent-cyan)"
+                      : "var(--border-glass-hover)",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
+                    className="w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all duration-150"
+                    style={{ left: isOn ? 16 : 2 }}
+                  />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {tickers.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-8 px-4 gap-2">
+            <Zap size={24} style={{ color: "var(--text-muted)", opacity: 0.3 }} />
+            <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
+              Pulsa + para añadir un ticker
             </p>
           </div>
         )}
       </div>
+    </div>
+  );
+
+  // Detail view
+  if (showDetail && selectedSquawk) {
+    return (
+      <div className="h-[calc(100vh-3rem)] flex">
+        {sidebar}
+        <div className="flex-1 overflow-y-auto p-5">
+          <button
+            onClick={() => {
+              setShowDetail(false);
+              setSelectedSquawk(null);
+            }}
+            className="text-xs flex items-center gap-1 mb-4"
+            style={{ color: "var(--accent-cyan)", background: "none", border: "none", cursor: "pointer" }}
+          >
+            <ChevronLeft size={14} /> {activeTicker}
+          </button>
+          <SquawkDetail squawk={selectedSquawk} />
+        </div>
+        {toast && <Toast message={toast} />}
+      </div>
+    );
+  }
+
+  // Main feed view
+  const feedSquawks = squawks;
+
+  return (
+    <div className="h-[calc(100vh-3rem)] flex">
+      {sidebar}
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span
+              className="text-lg font-bold"
+              style={{ color: "var(--text-primary)" }}
+            >
+              {activeTicker || "Squawks"}
+            </span>
+            {activeTicker && (
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {feedSquawks.length} squawks ·{" "}
+                {feedSquawks.filter((s) => !s.is_read).length} sin leer
+              </span>
+            )}
+          </div>
+          <button
+            onClick={fetchSquawks}
+            className="p-1.5 rounded-lg"
+            style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+          >
+            <RefreshCw size={14} className={loadingSquawks ? "spin-slow" : ""} />
+          </button>
+        </div>
+
+        {!activeTicker ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Zap size={40} style={{ color: "var(--text-muted)", opacity: 0.2 }} />
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              Selecciona un ticker o pulsa + para empezar
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Feed */}
+            <div className="space-y-2">
+              {loadingSquawks && feedSquawks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <div className="spin-slow w-6 h-6 border-2 border-[var(--accent-cyan)] border-t-transparent rounded-full" />
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Cargando squawks...
+                  </span>
+                </div>
+              ) : feedSquawks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <Volume2
+                    size={32}
+                    style={{ color: "var(--text-muted)", opacity: 0.3 }}
+                  />
+                  <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                    No hay squawks para {activeTicker}
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Aparecerán aquí cuando el pipeline detecte oportunidades
+                  </p>
+                </div>
+              ) : (
+                feedSquawks.map((s) => (
+                  <SquawkCard
+                    key={s.id}
+                    squawk={s}
+                    selected={selectedSquawk?.id === s.id}
+                    onSelect={(id) => {
+                      const sq = feedSquawks.find((x) => x.id === id);
+                      if (sq) {
+                        setSelectedSquawk(sq);
+                        setShowDetail(true);
+                      }
+                    }}
+                  />
+                ))
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      {toast && <Toast message={toast} />}
+    </div>
+  );
+}
+
+function Toast({ message }: { message: string }) {
+  return (
+    <div
+      className="fixed top-14 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-xl text-sm animate-fade-in"
+      style={{
+        background: "var(--bg-glass)",
+        backdropFilter: "blur(16px)",
+        border: "1px solid var(--border-glass)",
+        color: "var(--accent-emerald)",
+      }}
+    >
+      {message}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus, Info, Volume2, Star } from "lucide-react";
 import type { Squawk } from "@/lib/types";
 import AudioPlayer from "./audio-player";
 
@@ -16,90 +16,87 @@ export default function SquawkCard({
   onSelect,
 }: SquawkCardProps) {
   const timeAgo = getTimeAgo(squawk.created_at);
+  const dir = squawk.direction?.toUpperCase() || squawk.squawk_type?.toUpperCase() || "INFO";
+  const isBuy = dir === "LONG" || dir === "BUY";
+  const isSell = dir === "SHORT" || dir === "SELL";
+  const label = isBuy ? "LONG" : isSell ? "SHORT" : dir === "HOLD" ? "HOLD" : "INFO";
 
   return (
     <button
       onClick={() => onSelect(squawk.id)}
       className="w-full text-left p-4 rounded-xl transition-all duration-200 animate-fade-in"
       style={{
-        background: selected
-          ? "var(--bg-glass-hover)"
-          : "transparent",
+        background: selected ? "var(--bg-glass-hover)" : "transparent",
         border: `1px solid ${selected ? "var(--accent-cyan)" : "var(--border-glass)"}`,
-        opacity: squawk.is_read && !selected ? 0.7 : 1,
+        borderLeft: `3px solid ${isBuy ? "var(--accent-emerald)" : isSell ? "var(--accent-red)" : "transparent"}`,
+        opacity: squawk.is_read && !selected ? 0.6 : 1,
       }}
     >
-      {/* Top row: ticker + direction + priority + time */}
+      {/* Top row */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span
-            className="font-mono text-sm font-bold"
-            style={{ color: "var(--text-primary)" }}
-          >
-            {squawk.ticker}
-          </span>
-          <span
             className="inline-flex items-center gap-0.5 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded"
             style={{
-              background:
-                squawk.direction === "LONG"
-                  ? "var(--accent-emerald-dim)"
-                  : "var(--accent-red-dim)",
-              color:
-                squawk.direction === "LONG"
-                  ? "var(--accent-emerald)"
-                  : "var(--accent-red)",
+              background: isBuy
+                ? "var(--accent-emerald-dim)"
+                : isSell
+                  ? "var(--accent-red-dim)"
+                  : label === "HOLD"
+                    ? "var(--accent-amber-dim)"
+                    : "var(--accent-cyan-dim)",
+              color: isBuy
+                ? "var(--accent-emerald)"
+                : isSell
+                  ? "var(--accent-red)"
+                  : label === "HOLD"
+                    ? "var(--accent-amber)"
+                    : "var(--accent-cyan)",
             }}
           >
-            {squawk.direction === "LONG" ? (
-              <ArrowUp size={10} />
-            ) : (
-              <ArrowDown size={10} />
-            )}
-            {squawk.direction}
+            {isBuy ? <ArrowUp size={10} /> : isSell ? <ArrowDown size={10} /> : label === "HOLD" ? <Minus size={10} /> : <Info size={10} />}
+            {label}
+          </span>
+          <span className="text-xs font-mono font-semibold" style={{ color: "var(--text-primary)" }}>
+            Score {squawk.score}
           </span>
           <span className={`badge-${squawk.priority}`}>
             {squawk.priority}
           </span>
+          {squawk.audio_url && (
+            <Volume2 size={11} style={{ color: "var(--accent-cyan)" }} />
+          )}
+          {squawk.is_favorite && (
+            <Star size={11} style={{ color: "var(--accent-amber)" }} fill="var(--accent-amber)" />
+          )}
         </div>
-        <span
-          className="text-[0.65rem]"
-          style={{ color: "var(--text-muted)" }}
-        >
+        <span className="text-[0.65rem]" style={{ color: "var(--text-muted)" }}>
           {timeAgo}
         </span>
       </div>
 
-      {/* Title */}
-      <p
-        className="text-sm font-medium mb-1 line-clamp-1"
-        style={{ color: "var(--text-primary)" }}
-      >
-        {squawk.title}
-      </p>
-
       {/* Body snippet */}
-      <p
-        className="text-xs line-clamp-2 mb-3"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        {squawk.body}
+      <p className="text-xs line-clamp-2 mb-2" style={{ color: "var(--text-secondary)" }}>
+        {squawk.body || squawk.title}
       </p>
 
-      {/* Audio + score */}
-      <div className="flex items-center justify-between">
-        <AudioPlayer
-          url={squawk.audio_url}
-          duration={squawk.audio_duration}
-          compact
-        />
-        <span
-          className="text-xs font-mono"
-          style={{ color: "var(--text-muted)" }}
-        >
-          Score {squawk.score}
-        </span>
-      </div>
+      {/* Guardrails mini */}
+      {squawk.guardrails_result && (
+        <div className="flex gap-1 flex-wrap">
+          {Object.entries(squawk.guardrails_result).map(([k, v]) => (
+            <span
+              key={k}
+              className="text-[0.55rem] px-1 py-0.5 rounded"
+              style={{
+                background: v ? "var(--accent-emerald-dim)" : "var(--accent-red-dim)",
+                color: v ? "var(--accent-emerald)" : "var(--accent-red)",
+              }}
+            >
+              {v ? "✓" : "✗"}{k}
+            </span>
+          ))}
+        </div>
+      )}
     </button>
   );
 }
