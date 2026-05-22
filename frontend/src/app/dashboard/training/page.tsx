@@ -58,15 +58,26 @@ const ALL_FEATURES = [
   { key: "ema_9", label: "EMA 9", cat: "Tendencia" },
   { key: "ema_12", label: "EMA 12", cat: "Tendencia" },
   { key: "ema_21", label: "EMA 21", cat: "Tendencia" },
+  { key: "ema_50", label: "EMA 50", cat: "Tendencia" },
   { key: "rsi_14", label: "RSI (14)", cat: "Momentum" },
   { key: "macd_line", label: "MACD Line", cat: "Momentum" },
   { key: "macd_signal", label: "MACD Signal", cat: "Momentum" },
+  { key: "macd_hist", label: "MACD Hist", cat: "Momentum" },
   { key: "bb_pct", label: "Bollinger %B", cat: "Volatilidad" },
   { key: "bb_width", label: "Bollinger Width", cat: "Volatilidad" },
-  { key: "vwap", label: "VWAP", cat: "Volumen" },
   { key: "atr_14", label: "ATR (14)", cat: "Volatilidad" },
-  { key: "returns_5", label: "Returns 5m", cat: "Precio" },
+  { key: "range_pct", label: "Range %", cat: "Volatilidad" },
+  { key: "vwap", label: "VWAP", cat: "Volumen" },
   { key: "volume_norm", label: "Volumen norm.", cat: "Volumen" },
+  { key: "returns_5", label: "Returns 5m", cat: "Precio" },
+  { key: "returns_15", label: "Returns 15m", cat: "Precio" },
+  { key: "hour", label: "Hora", cat: "Temporal" },
+  { key: "dayofweek", label: "Día semana", cat: "Temporal" },
+  { key: "is_market_open", label: "Mercado abierto", cat: "Temporal" },
+  { key: "news_count_1h", label: "Noticias 1h", cat: "Sentimiento" },
+  { key: "news_count_24h", label: "Noticias 24h", cat: "Sentimiento" },
+  { key: "sentiment_score", label: "Sentiment score", cat: "Sentimiento" },
+  { key: "sentiment_label_encoded", label: "Sentiment label", cat: "Sentimiento" },
 ];
 
 const DEFAULT_FEATURES = ALL_FEATURES.map((f) => f.key);
@@ -91,10 +102,10 @@ export default function TrainingPage() {
   const [fTicker, setFTicker] = useState("AAPL");
   const [fModelType, setFModelType] = useState("");
   const [fHyperparams, setFHyperparams] = useState<Record<string, number>>({});
-  const [fTrainFrom, setFTrainFrom] = useState("2026-04-10");
-  const [fTrainTo, setFTrainTo] = useState("2026-04-20");
-  const [fTestFrom, setFTestFrom] = useState("2026-04-20");
-  const [fTestTo, setFTestTo] = useState("2026-04-24");
+  const [fTrainFrom, setFTrainFrom] = useState("");
+  const [fTrainTo, setFTrainTo] = useState("");
+  const [fTestFrom, setFTestFrom] = useState("");
+  const [fTestTo, setFTestTo] = useState("");
   const [fFeatures, setFFeatures] = useState<string[]>(DEFAULT_FEATURES);
   const [fContextTickers, setFContextTickers] = useState<string[]>([]);
   const [trainingName, setTrainingName] = useState<string | null>(null);
@@ -105,7 +116,6 @@ export default function TrainingPage() {
   const [tickerSearch, setTickerSearch] = useState("");
   const [tickerResults, setTickerResults] = useState<TickerInfo[]>([]);
   const [tickerDropdownOpen, setTickerDropdownOpen] = useState(false);
-  const [searchingTickers, setSearchingTickers] = useState(false);
 
   // Context ticker search
   const [ctxSearch, setCtxSearch] = useState("");
@@ -135,7 +145,7 @@ export default function TrainingPage() {
         params_schema: t.params_schema || [],
       }));
       setModelTypes(types);
-      if (types.length > 0 && !fModelType) setFModelType(mtId(types[0]));
+      setFModelType((prev) => prev || (types.length > 0 ? mtId(types[0]) : ""));
     } catch { /* ignore */ } finally { setLoading(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -151,30 +161,27 @@ export default function TrainingPage() {
     setFHyperparams(defaultHyperparams(mt));
   }, [fModelType, modelTypes]);
 
-  /* ── Ticker search with debounce ────────────────────────────────────── */
-
-  useEffect(() => {
-    if (!tickerSearch || tickerSearch.length < 1) { setTickerResults([]); return; }
-    const timer = setTimeout(async () => {
-      setSearchingTickers(true);
-      try {
-        const res = await api.get(`/api/tickers/universe?search=${encodeURIComponent(tickerSearch)}&limit=10`);
-        setTickerResults(res.data.tickers || []);
-      } catch { setTickerResults([]); } finally { setSearchingTickers(false); }
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [tickerSearch]);
-
-  /* ── Context ticker search (only tickers with silver data) ──────────── */
+  /* ── Silver tickers (tickers with actual data) ────────────────────── */
 
   const [silverTickers, setSilverTickers] = useState<TickerInfo[]>([]);
 
   useEffect(() => {
-    // Fetch all tickers available in silver_features_1m (small list)
     api.get("/api/tickers/silver-available?limit=100")
       .then((res) => setSilverTickers(res.data.tickers || []))
       .catch(() => setSilverTickers([]));
   }, []);
+
+  /* ── Ticker search (filter from silver tickers with actual data) ───── */
+
+  useEffect(() => {
+    if (!tickerSearch || tickerSearch.length < 1) { setTickerResults(silverTickers); return; }
+    const q = tickerSearch.toUpperCase();
+    setTickerResults(silverTickers.filter((t) =>
+      t.ticker.includes(q) || (t.name || "").toUpperCase().includes(q)
+    ));
+  }, [tickerSearch, silverTickers]);
+
+  /* ── Context ticker search (only tickers with silver data) ──────────── */
 
   useEffect(() => {
     // Filter silver tickers by search term, exclude current ticker and already-selected
@@ -188,16 +195,62 @@ export default function TrainingPage() {
     ));
   }, [ctxSearch, fTicker, fContextTickers, silverTickers]);
 
+  /* ── Auto-set dates when ticker changes (based on available data + plan) ── */
+
+  useEffect(() => {
+    if (!fTicker || silverTickers.length === 0) return;
+    // Only auto-set if dates are empty (new model) or ticker just changed
+    const match = silverTickers.find((t) => t.ticker === fTicker);
+    if (!match?.data_from || !match?.data_to) return;
+
+    const dataFrom = match.data_from.slice(0, 10);
+    const dataTo = match.data_to.slice(0, 10);
+    const fromDate = new Date(dataFrom);
+    const toDate = new Date(dataTo);
+    const rangeDays = Math.round((toDate.getTime() - fromDate.getTime()) / 86400000);
+
+    if (rangeDays <= 0) return;
+
+    // Clamp by plan limits
+    const planMaxDays = limits.max_training_days;
+    const effectiveMax = planMaxDays > 0 ? Math.min(rangeDays, planMaxDays) : rangeDays;
+
+    // Split ~70% train / ~30% test within available range
+    const trainDaysCalc = Math.max(1, Math.round(effectiveMax * 0.7));
+    const testDaysCalc = Math.max(1, effectiveMax - trainDaysCalc);
+
+    const trainStart = new Date(toDate);
+    trainStart.setDate(trainStart.getDate() - trainDaysCalc - testDaysCalc);
+    const trainEnd = new Date(trainStart);
+    trainEnd.setDate(trainEnd.getDate() + trainDaysCalc);
+    const testEnd = new Date(trainEnd);
+    testEnd.setDate(testEnd.getDate() + testDaysCalc);
+
+    // Clamp to actual data range
+    const clampedTrainStart = trainStart < fromDate ? fromDate : trainStart;
+    const clampedTestEnd = testEnd > toDate ? toDate : testEnd;
+
+    setFTrainFrom(fmtDate(clampedTrainStart));
+    setFTrainTo(fmtDate(trainEnd));
+    setFTestFrom(fmtDate(trainEnd));
+    setFTestTo(fmtDate(clampedTestEnd));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fTicker, silverTickers]);
+
   /* ── Derived state ──────────────────────────────────────────────────── */
 
   const selected = jobs.find((j) => j.id === selectedId);
   const mt = modelTypes.find((m) => mtId(m) === fModelType);
 
+  const tickerSilver = silverTickers.find((t) => t.ticker === fTicker);
+  const tickerDataMin = tickerSilver?.data_from?.slice(0, 10) || "";
+  const tickerDataMax = tickerSilver?.data_to?.slice(0, 10) || "";
+
   const trainDays = fTrainFrom && fTrainTo ? Math.round((new Date(fTrainTo).getTime() - new Date(fTrainFrom).getTime()) / 86400000) : 0;
   const testDays = fTestFrom && fTestTo ? Math.round((new Date(fTestTo).getTime() - new Date(fTestFrom).getTime()) / 86400000) : 0;
   const totalDays = trainDays + testDays;
   const maxDays = limits.max_training_days;
-  const daysOk = trainDays > 0 && testDays > 0 && (maxDays === 0 ? false : totalDays <= maxDays);
+  const daysOk = trainDays > 0 && testDays > 0 && (maxDays <= 0 ? !isTrial : totalDays <= maxDays);
   const today = fmtDate(new Date());
   const dateMin = clampDateMin(maxDays);
   const modelsRemaining = (usage?.limit_custom_models ?? limits.max_custom_models) - (usage?.custom_models ?? jobs.length);
@@ -220,10 +273,10 @@ export default function TrainingPage() {
     skipHyperReset.current = true;
     setFModelType(job.model_type);
     // Always restore dates from job
-    setFTrainFrom(job.train_from || fTrainFrom);
-    setFTrainTo(job.train_to || fTrainTo);
-    setFTestFrom(job.test_from || fTestFrom);
-    setFTestTo(job.test_to || fTestTo);
+    setFTrainFrom(job.train_from || "");
+    setFTrainTo(job.train_to || "");
+    setFTestFrom(job.test_from || "");
+    setFTestTo(job.test_to || "");
     // Restore features (columns) — fall back to all if not stored
     if (job.columns && job.columns.length > 0) {
       setFFeatures(job.columns);
@@ -242,11 +295,13 @@ export default function TrainingPage() {
 
   const handleTrain = async () => {
     setErrors([]);
+    if (!fName || !fTicker || !fModelType) { showToast("Rellena nombre, ticker y tipo de modelo", "err"); return; }
+    if (!fTrainFrom || !fTrainTo || !fTestFrom || !fTestTo) { showToast("Selecciona fechas de train y test", "err"); return; }
     if (trainingsRemaining <= 0) { showToast("Sin trainings restantes. Compra un pack extra.", "err"); return; }
-    setTrainingName(fName || `${fModelType}_${fTicker}`);
+    setTrainingName(fName);
     try {
       const res = await api.post("/api/train", {
-        name: fName || `${fModelType}_${fTicker}_${Date.now()}`,
+        name: fName,
         ticker: fTicker,
         model_type: fModelType,
         hyperparameters: fHyperparams,
@@ -354,17 +409,20 @@ export default function TrainingPage() {
                   placeholder="Buscar ticker..." className="w-full text-xs py-1.5 px-2 bg-transparent outline-none" style={{ color: "var(--text-primary)", border: "none" }} />
                 {fTicker && <span className="text-[0.6rem] px-1.5 py-0.5 rounded mr-1 flex-shrink-0" style={{ background: "var(--accent-cyan-dim)", color: "var(--accent-cyan)" }}>{fTicker}</span>}
               </div>
-              {tickerDropdownOpen && (
-                <div className="absolute left-0 right-0 mt-1 rounded-lg overflow-hidden z-20 max-h-40 overflow-y-auto" style={{ background: "rgba(15,23,42,0.95)", border: "1px solid var(--border-glass)", backdropFilter: "blur(12px)" }}>
-                  {searchingTickers && <div className="px-3 py-2 text-[0.6rem]" style={{ color: "var(--text-muted)" }}>Buscando...</div>}
-                  {!searchingTickers && tickerResults.length === 0 && tickerSearch.length > 0 && <div className="px-3 py-2 text-[0.6rem]" style={{ color: "var(--text-muted)" }}>Sin resultados</div>}
+              {tickerDropdownOpen && tickerResults.length > 0 && (
+                <div className="absolute left-0 right-0 mt-1 rounded-lg overflow-hidden z-20 max-h-48 overflow-y-auto" style={{ background: "rgba(15,23,42,0.95)", border: "1px solid var(--border-glass)", backdropFilter: "blur(12px)" }}>
                   {tickerResults.map((t) => (
-                    <button key={t.ticker} onClick={() => { setFTicker(t.ticker); setTickerSearch(""); setTickerDropdownOpen(false); }}
-                      className="w-full text-left px-3 py-1.5 flex justify-between items-center hover:bg-white/5" style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-primary)" }}>
+                    <button key={t.ticker} onMouseDown={(e) => { e.preventDefault(); setFTicker(t.ticker); setTickerSearch(""); setTickerDropdownOpen(false); }}
+                      className="w-full text-left px-3 py-1.5 flex justify-between items-center hover:bg-white/5" style={{ background: t.ticker === fTicker ? "rgba(255,255,255,0.06)" : "transparent", border: "none", cursor: "pointer", color: "var(--text-primary)" }}>
                       <span className="text-xs"><b>{t.ticker}</b> <span style={{ color: "var(--text-muted)" }}>{t.name}</span></span>
                       <span className="text-[0.55rem]" style={{ color: "var(--text-muted)" }}>{t.sector}</span>
                     </button>
                   ))}
+                </div>
+              )}
+              {tickerDropdownOpen && tickerResults.length === 0 && tickerSearch.length > 0 && (
+                <div className="absolute left-0 right-0 mt-1 rounded-lg overflow-hidden z-20 px-3 py-2" style={{ background: "rgba(15,23,42,0.95)", border: "1px solid var(--border-glass)" }}>
+                  <span className="text-[0.6rem]" style={{ color: "var(--text-muted)" }}>Sin datos para &quot;{tickerSearch}&quot;</span>
                 </div>
               )}
             </div>
@@ -381,10 +439,11 @@ export default function TrainingPage() {
                 ))}
               </div>
             )}
-            <button onClick={() => { if (fModelType && fName && fTicker) setShowNew(false); }}
-              className="w-full text-xs py-1.5 rounded-md" style={{ background: fModelType && fName ? "var(--accent-violet)" : "var(--text-muted)", color: "white", border: "none", cursor: fModelType && fName ? "pointer" : "default", opacity: fModelType && fName ? 1 : 0.5 }}>
-              Crear
-            </button>
+            {fName && fTicker && fModelType && (
+              <div className="text-[0.6rem] text-center py-1" style={{ color: "var(--accent-emerald)" }}>
+                ✓ Configura y pulsa Entrenar →
+              </div>
+            )}
           </div>
         )}
 
@@ -432,9 +491,9 @@ export default function TrainingPage() {
             {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2">
-                <span className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>{fName || "Nuevo modelo"}</span>
-                <span className="text-xs px-2 py-0.5 rounded font-mono" style={{ background: "var(--accent-cyan-dim)", color: "var(--accent-cyan)" }}>{fTicker}</span>
-                <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--accent-violet-dim)", color: "var(--accent-violet)" }}>{mt?.label || fModelType}</span>
+                <span className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>{selected?.model_name || fName || "Nuevo modelo"}</span>
+                <span className="text-xs px-2 py-0.5 rounded font-mono" style={{ background: "var(--accent-cyan-dim)", color: "var(--accent-cyan)" }}>{selected?.ticker || fTicker}</span>
+                <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--accent-violet-dim)", color: "var(--accent-violet)" }}>{selected ? (modelTypes.find((m) => mtId(m) === selected.model_type)?.label || selected.model_type) : (mt?.label || fModelType)}</span>
                 {selected?.status && <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ background: `${STATUS_COLOR[selected.status]}22`, color: STATUS_COLOR[selected.status] }}>{STATUS_LABEL[selected.status] || selected.status}</span>}
               </div>
               <div className="flex items-center gap-3">
@@ -492,16 +551,16 @@ export default function TrainingPage() {
             {/* Train bar + Dates */}
             <div className="glass-card p-4">
               <div className="flex gap-3 items-end flex-wrap">
-                <button onClick={handleTrain} disabled={!daysOk || isTrainingThis || trainingsRemaining <= 0}
+                <button onClick={handleTrain} disabled={!daysOk || isTrainingThis || trainingsRemaining <= 0 || !fName || !fTicker || !fModelType}
                   className="flex items-center gap-2 text-sm h-9 px-4 rounded-lg font-semibold"
-                  style={{ background: "linear-gradient(135deg, var(--accent-violet), #7c3aed)", color: "white", border: "none", cursor: daysOk && !isTrainingThis && trainingsRemaining > 0 ? "pointer" : "default", opacity: daysOk && !isTrainingThis && trainingsRemaining > 0 ? 1 : 0.5 }}>
+                  style={{ background: "linear-gradient(135deg, var(--accent-violet), #7c3aed)", color: "white", border: "none", cursor: daysOk && !isTrainingThis && trainingsRemaining > 0 && fName && fTicker && fModelType ? "pointer" : "default", opacity: daysOk && !isTrainingThis && trainingsRemaining > 0 && fName && fTicker && fModelType ? 1 : 0.5 }}>
                   {isTrainingThis ? <div className="spin-slow w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" /> : selected?.status === "completed" ? <RefreshCw size={14} /> : <Play size={14} />}
                   {selected?.status === "completed" ? "Re-train" : "Entrenar"}
                 </button>
-                <div><label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Train desde</label><input type="date" value={fTrainFrom} min={dateMin} max={fTrainTo || today} onChange={(e) => setFTrainFrom(e.target.value)} className="input-glass text-xs py-1.5 h-9 w-36" /></div>
-                <div><label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Train hasta</label><input type="date" value={fTrainTo} min={fTrainFrom || dateMin} max={today} onChange={(e) => { setFTrainTo(e.target.value); setFTestFrom(e.target.value); }} className="input-glass text-xs py-1.5 h-9 w-36" /></div>
-                <div><label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Test desde</label><input type="date" value={fTestFrom} min={fTrainTo || dateMin} max={fTestTo || today} onChange={(e) => setFTestFrom(e.target.value)} className="input-glass text-xs py-1.5 h-9 w-36" /></div>
-                <div><label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Test hasta</label><input type="date" value={fTestTo} min={fTestFrom || dateMin} max={today} onChange={(e) => setFTestTo(e.target.value)} className="input-glass text-xs py-1.5 h-9 w-36" /></div>
+                <div><label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Train desde</label><input type="date" value={fTrainFrom} min={tickerDataMin || dateMin} max={fTrainTo || today} onChange={(e) => setFTrainFrom(e.target.value)} className="input-glass text-xs py-1.5 h-9 w-36" /></div>
+                <div><label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Train hasta</label><input type="date" value={fTrainTo} min={fTrainFrom || tickerDataMin || dateMin} max={tickerDataMax || today} onChange={(e) => { setFTrainTo(e.target.value); setFTestFrom(e.target.value); }} className="input-glass text-xs py-1.5 h-9 w-36" /></div>
+                <div><label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Test desde</label><input type="date" value={fTestFrom} min={fTrainTo || tickerDataMin || dateMin} max={fTestTo || tickerDataMax || today} onChange={(e) => setFTestFrom(e.target.value)} className="input-glass text-xs py-1.5 h-9 w-36" /></div>
+                <div><label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Test hasta</label><input type="date" value={fTestTo} min={fTestFrom || tickerDataMin || dateMin} max={tickerDataMax || today} onChange={(e) => setFTestTo(e.target.value)} className="input-glass text-xs py-1.5 h-9 w-36" /></div>
               </div>
               <div className="flex items-center gap-3 mt-2 text-xs flex-wrap">
                 <span style={{ color: daysOk ? "var(--text-muted)" : "var(--accent-red)" }}>
@@ -509,6 +568,11 @@ export default function TrainingPage() {
                   {maxDays > 0 && totalDays > maxDays && ` (máx ${maxDays}d)`}
                 </span>
                 <span className="text-[0.6rem] px-2 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-muted)" }}>Plan {plan}: máx {PLAN_TRAIN_LABEL[plan] || "—"}</span>
+                {tickerDataMin && tickerDataMax && (
+                  <span className="text-[0.6rem] px-2 py-0.5 rounded" style={{ background: "var(--accent-cyan-dim)", color: "var(--accent-cyan)" }}>
+                    Datos {fTicker}: {tickerDataMin} → {tickerDataMax}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -564,12 +628,12 @@ export default function TrainingPage() {
                 <input type="text" value={ctxSearch}
                   onChange={(e) => { setCtxSearch(e.target.value.toUpperCase()); setCtxDropdownOpen(true); }}
                   onFocus={() => setCtxDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setCtxDropdownOpen(false), 200)}
+                  onBlur={() => setTimeout(() => setCtxDropdownOpen(false), 150)}
                   placeholder="Buscar ticker para añadir..." className="input-glass text-xs py-1.5 w-56" />
                 {ctxDropdownOpen && ctxResults.length > 0 && (
-                  <div className="absolute left-0 mt-1 rounded-lg overflow-hidden z-20 max-h-32 overflow-y-auto w-56" style={{ background: "rgba(15,23,42,0.95)", border: "1px solid var(--border-glass)" }}>
+                  <div className="absolute left-0 mt-1 rounded-lg overflow-hidden z-20 max-h-60 overflow-y-auto w-64" style={{ background: "rgba(15,23,42,0.95)", border: "1px solid var(--border-glass)" }}>
                     {ctxResults.map((t) => (
-                      <button key={t.ticker} onClick={() => { setFContextTickers((p) => [...p, t.ticker]); setCtxSearch(""); setCtxDropdownOpen(false); }}
+                      <button key={t.ticker} onMouseDown={(e) => { e.preventDefault(); setFContextTickers((p) => [...p, t.ticker]); setCtxSearch(""); setCtxDropdownOpen(false); }}
                         className="w-full text-left px-3 py-1.5 text-xs hover:bg-white/5" style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-primary)" }}>
                         <b>{t.ticker}</b> <span style={{ color: "var(--text-muted)" }}>{t.name}</span>
                       </button>
@@ -595,8 +659,8 @@ export default function TrainingPage() {
                       <div key={p.key}>
                         <div className="flex justify-between mb-1"><span className="text-xs" style={{ color: "var(--text-muted)" }}>{p.label || p.key}</span><span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{val}</span></div>
                         <div className="flex items-center gap-2">
-                          <input type="range" min={p.min ?? 0} max={sliderMax} step={sliderStep} value={val} onChange={(e) => setFHyperparams((prev) => ({ ...prev, [p.key]: parseFloat(e.target.value) }))} className="flex-1" style={{ accentColor: "var(--accent-violet)" }} />
-                          <input type="number" value={val} step={sliderStep} onChange={(e) => setFHyperparams((prev) => ({ ...prev, [p.key]: parseFloat(e.target.value) || p.default }))} className="w-16 text-center text-xs rounded py-1" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--border-glass)", color: "var(--text-primary)" }} />
+                          <input type="range" min={p.min ?? 0} max={sliderMax} step={sliderStep} value={val} onChange={(e) => setFHyperparams((prev) => ({ ...prev, [p.key]: p.type === "integer" ? parseInt(e.target.value, 10) : parseFloat(e.target.value) }))} className="flex-1" style={{ accentColor: "var(--accent-violet)" }} />
+                          <input type="number" value={val} step={sliderStep} onChange={(e) => { const v = p.type === "integer" ? parseInt(e.target.value, 10) : parseFloat(e.target.value); setFHyperparams((prev) => ({ ...prev, [p.key]: isNaN(v) ? p.default : v })); }} className="w-16 text-center text-xs rounded py-1" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--border-glass)", color: "var(--text-primary)" }} />
                         </div>
                       </div>
                     );

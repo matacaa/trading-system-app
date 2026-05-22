@@ -232,4 +232,8 @@ export interface TickerInfo {
   sector: string | null;
   exchange: string | null;
   model_coverage: string | null;
+  // Extras from /tickers/silver-available
+  data_from?: string;
+  data_to?: string;
+  row_count?: number;
 }

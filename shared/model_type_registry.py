@@ -96,6 +96,10 @@ def validate_hyperparameters(type_id: str, params: dict) -> list[str]:
 
         # Validar tipo
         if param_type == "integer":
+            # Accept float-encoded integers (200.0 → 200) from frontend sliders
+            if isinstance(value, float) and value == int(value):
+                value = int(value)
+                params[key] = value
             if not isinstance(value, int):
                 errors.append(f"{key}: debe ser entero, recibido {type(value).__name__}")
                 continue

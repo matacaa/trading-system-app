@@ -78,9 +78,14 @@ def generate_experiment_yaml(
     )
 
     default_columns = [
-        "ema_9", "ema_12", "ema_21", "rsi_14",
-        "macd_line", "macd_signal", "bb_pct", "bb_width",
-        "vwap", "atr_14", "returns_5", "volume_norm",
+        "ema_9", "ema_12", "ema_21", "ema_50", "rsi_14",
+        "macd_line", "macd_signal", "macd_hist",
+        "bb_pct", "bb_width", "atr_14", "range_pct",
+        "vwap", "volume_norm",
+        "returns_5", "returns_15",
+        "hour", "dayofweek", "is_market_open",
+        "news_count_1h", "news_count_24h",
+        "sentiment_score", "sentiment_label_encoded",
     ]
 
     config = {

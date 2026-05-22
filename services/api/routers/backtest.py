@@ -188,45 +188,70 @@ async def run_backtest(req: BacktestRequest, user: dict = Depends(get_active_use
     bt_name = result.get("backtest_name", req.name)
 
     # Guardar en DB con campos nuevos
-    conn = get_conn()
     bt_id = None
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO backtest_runs
-                   (name, user_id, ticker, direction, date_from, date_to,
-                    guardrails_config, models_config, models_enabled,
-                    config, status, created_at)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                   RETURNING id""",
-                [
-                    bt_name, user_id, req.ticker, req.direction,
-                    req.date_from, req.date_to,
-                    json.dumps(req.guardrails_config),
-                    json.dumps(req.models_config),
-                    req.models_enabled,
-                    json.dumps({"duration": duration}),
-                    "completed" if result.get("success") else "failed",
-                    datetime.now(UTC),
-                ],
-            )
-            row = cur.fetchone()
-            bt_id = row[0] if row else None
-        conn.commit()
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO backtest_runs
+                       (name, user_id, ticker, direction, date_from, date_to,
+                        guardrails_config, models_config, models_enabled,
+                        config, status, created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (name) DO UPDATE SET
+                        user_id = EXCLUDED.user_id, ticker = EXCLUDED.ticker,
+                        direction = EXCLUDED.direction, date_from = EXCLUDED.date_from,
+                        date_to = EXCLUDED.date_to, guardrails_config = EXCLUDED.guardrails_config,
+                        models_config = EXCLUDED.models_config, models_enabled = EXCLUDED.models_enabled,
+                        config = EXCLUDED.config, status = EXCLUDED.status, created_at = EXCLUDED.created_at
+                       RETURNING id""",
+                    [
+                        bt_name, user_id, req.ticker, req.direction,
+                        req.date_from, req.date_to,
+                        json.dumps(req.guardrails_config),
+                        json.dumps(req.models_config),
+                        req.models_enabled,
+                        json.dumps({"duration": duration}),
+                        "completed" if result.get("success") else "failed",
+                        datetime.now(UTC),
+                    ],
+                )
+                row = cur.fetchone()
+                bt_id = row[0] if row else None
     except Exception as e:
-        conn.rollback()
         log.error(f"Error guardando backtest: {e}")
-    finally:
-        conn.close()
 
-    # Leer métricas si tuvo éxito
+    # Si tuvo éxito, copiar métricas de backtest_metrics a backtest_runs
     metrics = None
-    if result.get("success"):
+    if result.get("success") and bt_id:
         m_rows = query(
-            "SELECT * FROM backtest_metrics WHERE backtest_name = %s LIMIT 1",
+            """SELECT total_trades, pnl_total, pnl_pct_total AS pnl_pct,
+                      win_rate, sharpe_ratio, max_drawdown
+               FROM backtest_metrics WHERE backtest_name = %s LIMIT 1""",
             [bt_name],
         )
-        metrics = m_rows[0] if m_rows else None
+        if m_rows:
+            metrics = m_rows[0]
+            try:
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """UPDATE backtest_runs
+                               SET total_trades = %s, pnl_total = %s, pnl_pct = %s,
+                                   win_rate = %s, sharpe_ratio = %s, max_drawdown = %s
+                               WHERE id = %s""",
+                            [
+                                metrics.get("total_trades"),
+                                metrics.get("pnl_total"),
+                                metrics.get("pnl_pct"),
+                                metrics.get("win_rate"),
+                                metrics.get("sharpe_ratio"),
+                                metrics.get("max_drawdown"),
+                                bt_id,
+                            ],
+                        )
+            except Exception as e:
+                log.warning(f"Error actualizando métricas en backtest_runs: {e}")
 
     return {
         "id": str(bt_id) if bt_id else None,
@@ -312,25 +337,21 @@ async def get_equity_curve(bt_id: str, user: dict = Depends(get_current_user)):
 async def delete_backtest(bt_id: str, user: dict = Depends(get_current_user)):
     """Elimina un backtest guardado."""
     rows = query(
-        "SELECT id, name FROM backtest_runs WHERE id = %s AND user_id = %s",
+        "SELECT id, name FROM backtest_runs WHERE id = %s AND (user_id = %s OR user_id IS NULL)",
         [bt_id, user["id"]],
     )
     if not rows:
         raise HTTPException(404, "Backtest no encontrado o no tienes permiso")
     bt_name = rows[0]["name"]
-    conn = get_conn()
     try:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM backtest_trades WHERE backtest_name = %s", [bt_name])
-            cur.execute("DELETE FROM backtest_metrics WHERE backtest_name = %s", [bt_name])
-            cur.execute(
-                "DELETE FROM backtest_runs WHERE id = %s AND user_id = %s",
-                [bt_id, user["id"]],
-            )
-        conn.commit()
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM backtest_trades WHERE backtest_name = %s", [bt_name])
+                cur.execute("DELETE FROM backtest_metrics WHERE backtest_name = %s", [bt_name])
+                cur.execute(
+                    "DELETE FROM backtest_runs WHERE id = %s",
+                    [bt_id],
+                )
     except Exception as e:
-        conn.rollback()
         raise HTTPException(500, f"Error eliminando backtest: {e}") from e
-    finally:
-        conn.close()
     return {"deleted": True, "id": bt_id}

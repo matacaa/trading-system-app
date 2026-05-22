@@ -112,41 +112,53 @@ async def get_model_predictions(name: str, user: dict = Depends(get_current_user
 @router.delete("/models/{name}")
 async def delete_model(name: str, user: dict = Depends(get_current_user)):
     """Elimina un modelo custom: registry + training_jobs + Blob Storage."""
+    # 1. Try to find in registry
     rows = query(
         """SELECT experiment_name, blob_path, user_id
            FROM silver_model_registry
            WHERE experiment_name = %s AND user_id = %s AND is_active = true""",
         [name, user["id"]],
     )
-    if not rows:
-        raise HTTPException(404, "Modelo no encontrado o no tienes permiso")
 
-    blob_path = rows[0].get("blob_path")
-    if blob_path:
-        try:
-            from shared.blob_storage import delete_model as blob_delete
+    # 2. Delete blob if exists
+    if rows:
+        blob_path = rows[0].get("blob_path")
+        if blob_path:
+            try:
+                from shared.blob_storage import delete_model as blob_delete
 
-            blob_delete(blob_path)
-        except Exception as e:
-            log.warning(f"Error eliminando blob {blob_path}: {e}")
+                blob_delete(blob_path)
+            except Exception as e:
+                log.warning(f"Error eliminando blob {blob_path}: {e}")
 
+    # 3. Delete from DB (registry + training_jobs)
+    deleted_registry = False
+    deleted_jobs = False
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
-                # Soft-delete from model registry
+                # Soft-delete from model registry (if exists)
+                if rows:
+                    cur.execute(
+                        """UPDATE silver_model_registry
+                           SET is_active = false, updated_at = NOW()
+                           WHERE experiment_name = %s AND user_id = %s""",
+                        [name, user["id"]],
+                    )
+                    deleted_registry = cur.rowcount > 0
+
+                # Soft-delete training_jobs (keep rows for usage count)
                 cur.execute(
-                    """UPDATE silver_model_registry
-                       SET is_active = false, updated_at = NOW()
-                       WHERE experiment_name = %s AND user_id = %s""",
-                    [name, user["id"]],
-                )
-                # Remove ALL training_jobs rows for this model name
-                cur.execute(
-                    """DELETE FROM training_jobs
+                    """UPDATE training_jobs
+                       SET is_deleted = true
                        WHERE model_name = %s AND user_id = %s""",
                     [name, user["id"]],
                 )
+                deleted_jobs = cur.rowcount > 0
     except Exception as e:
         raise HTTPException(500, f"Error eliminando modelo: {e}") from e
+
+    if not deleted_registry and not deleted_jobs:
+        raise HTTPException(404, "Modelo no encontrado o no tienes permiso")
 
     return {"deleted": True, "model": name}

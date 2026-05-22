@@ -111,6 +111,7 @@ def get_conn():
             if conn is not None:
                 conn.rollback()
                 pool.putconn(conn)
+                conn = None
             raise
         finally:
             if conn is not None:

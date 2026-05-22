@@ -59,11 +59,11 @@ def _count_trainings_this_month(user_id: str) -> int:
 
 
 def _count_custom_models(user_id: str) -> int:
-    """Count distinct model names the user has created (sidebar entries)."""
+    """Count distinct model names the user has (excludes failed and deleted)."""
     rows = query(
         """SELECT COUNT(*) as cnt FROM (
                SELECT DISTINCT model_name FROM training_jobs
-               WHERE user_id = %s
+               WHERE user_id = %s AND status != 'failed' AND is_deleted = false
            ) sub""",
         [user_id],
     )
@@ -74,7 +74,7 @@ def _model_exists(user_id: str, model_name: str) -> bool:
     """Check if a model with this name already exists for the user."""
     rows = query(
         """SELECT 1 FROM training_jobs
-           WHERE user_id = %s AND model_name = %s LIMIT 1""",
+           WHERE user_id = %s AND model_name = %s AND is_deleted = false LIMIT 1""",
         [user_id, model_name],
     )
     return bool(rows)
@@ -198,10 +198,15 @@ async def train_model(req: TrainRequest, user: dict = Depends(get_active_user)):
     start_time = time.time()
 
     # Always INSERT a new training_jobs row (counts toward monthly limit).
-    # The listing endpoint deduplicates by returning only the latest per model_name.
+    # For re-trains, delete old rows first so sidebar shows one entry per model.
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
+                if is_retrain:
+                    cur.execute(
+                        "UPDATE training_jobs SET is_deleted = true WHERE user_id = %s AND model_name = %s AND is_deleted = false",
+                        [user_id, req.name],
+                    )
                 cur.execute(
                     """INSERT INTO training_jobs
                        (user_id, model_name, model_type, ticker, status,
@@ -319,7 +324,7 @@ async def list_training_jobs(
                   hyperparameters, columns, context_tickers,
                   train_from, train_to, test_from, test_to,
                   started_at, completed_at, created_at
-           FROM training_jobs WHERE user_id = %s
+           FROM training_jobs WHERE user_id = %s AND is_deleted = false
            ORDER BY model_name, created_at DESC""",
         [user["id"]],
     )
