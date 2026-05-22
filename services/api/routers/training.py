@@ -41,6 +41,8 @@ class TrainRequest(BaseModel):
     train_to: str
     test_from: str
     test_to: str
+    context_tickers: list[str] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -153,6 +155,8 @@ def _run_training_sync(req: TrainRequest) -> dict:
         test_end=req.test_to,
         params=req.hyperparameters,
         experiment_name=req.name,
+        context_tickers=req.context_tickers or None,
+        columns=req.columns or None,
     )
     try:
         result = run_pipeline(
@@ -178,30 +182,26 @@ async def train_model(req: TrainRequest, user: dict = Depends(get_active_user)):
     start_time = time.time()
 
     # Crear training_job
-    conn = get_conn()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO training_jobs
-                   (user_id, model_name, model_type, ticker, status,
-                    train_from, train_to, test_from, test_to,
-                    hyperparameters, started_at)
-                   VALUES (%s,%s,%s,%s,'running',%s,%s,%s,%s,%s,%s)
-                   RETURNING id""",
-                [
-                    user_id, req.name, req.model_type, req.ticker,
-                    req.train_from, req.train_to, req.test_from, req.test_to,
-                    json.dumps(req.hyperparameters),
-                    datetime.now(UTC),
-                ],
-            )
-            job_id = str(cur.fetchone()[0])
-        conn.commit()
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO training_jobs
+                       (user_id, model_name, model_type, ticker, status,
+                        train_from, train_to, test_from, test_to,
+                        hyperparameters, started_at)
+                       VALUES (%s,%s,%s,%s,'running',%s,%s,%s,%s,%s,%s)
+                       RETURNING id""",
+                    [
+                        user_id, req.name, req.model_type, req.ticker,
+                        req.train_from, req.train_to, req.test_from, req.test_to,
+                        json.dumps(req.hyperparameters),
+                        datetime.now(UTC),
+                    ],
+                )
+                job_id = str(cur.fetchone()[0])
     except Exception as e:
-        conn.rollback()
         raise HTTPException(500, f"Error creando job: {e}") from e
-    finally:
-        conn.close()
 
     # Ejecutar training síncrono
     result = _run_training_sync(req)
@@ -222,53 +222,45 @@ async def train_model(req: TrainRequest, user: dict = Depends(get_active_user)):
             metrics = m_rows[0].get("metrics_summary")
 
         # Actualizar silver_model_registry con user_id + hyperparameters
-        conn = get_conn()
         try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """UPDATE silver_model_registry
-                       SET user_id = %s, hyperparameters = %s,
-                           train_from = %s, train_to = %s,
-                           test_from = %s, test_to = %s, updated_at = %s
-                       WHERE experiment_name = %s AND is_active = true""",
-                    [
-                        user_id, json.dumps(req.hyperparameters),
-                        req.train_from, req.train_to,
-                        req.test_from, req.test_to,
-                        datetime.now(UTC), exp_name,
-                    ],
-                )
-            conn.commit()
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """UPDATE silver_model_registry
+                           SET user_id = %s, hyperparameters = %s,
+                               train_from = %s, train_to = %s,
+                               test_from = %s, test_to = %s, updated_at = %s
+                           WHERE experiment_name = %s AND is_active = true""",
+                        [
+                            user_id, json.dumps(req.hyperparameters),
+                            req.train_from, req.train_to,
+                            req.test_from, req.test_to,
+                            datetime.now(UTC), exp_name,
+                        ],
+                    )
         except Exception as e:
-            conn.rollback()
             log.error(f"Error actualizando model_registry: {e}")
-        finally:
-            conn.close()
 
     # Actualizar training_job
-    conn = get_conn()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """UPDATE training_jobs
-                   SET status = %s, progress_pct = %s, metrics = %s,
-                       error = %s, completed_at = %s
-                   WHERE id = %s""",
-                [
-                    status,
-                    100 if status == "completed" else 0,
-                    json.dumps(metrics) if metrics else None,
-                    result.get("stderr", "")[:500] if status == "failed" else None,
-                    datetime.now(UTC),
-                    job_id,
-                ],
-            )
-        conn.commit()
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE training_jobs
+                       SET status = %s, progress_pct = %s, metrics = %s,
+                           error = %s, completed_at = %s
+                       WHERE id = %s""",
+                    [
+                        status,
+                        100 if status == "completed" else 0,
+                        json.dumps(metrics) if metrics else None,
+                        result.get("stderr", "")[:500] if status == "failed" else None,
+                        datetime.now(UTC),
+                        job_id,
+                    ],
+                )
     except Exception as e:
-        conn.rollback()
         log.error(f"Error actualizando job: {e}")
-    finally:
-        conn.close()
 
     return {
         "job_id": job_id,

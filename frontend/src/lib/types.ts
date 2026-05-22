@@ -171,13 +171,26 @@ export interface CustomModel {
 }
 
 export interface ModelType {
-  name: string;
+  type_id: string;
   label: string;
   category: string;
-  description: string;
-  params_schema: Record<string, ParamSchema>;
+  description?: string;
+  params_schema: ParamDef[];
+  // Backwards-compat: some code may reference .name
+  name?: string;
 }
 
+export interface ParamDef {
+  key: string;
+  label: string;
+  type?: string;
+  default: number;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+/** @deprecated Use ParamDef instead — kept for compat with guardrails */
 export interface ParamSchema {
   type: string;
   label: string;
