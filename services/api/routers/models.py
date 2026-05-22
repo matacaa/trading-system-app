@@ -111,7 +111,7 @@ async def get_model_predictions(name: str, user: dict = Depends(get_current_user
 
 @router.delete("/models/{name}")
 async def delete_model(name: str, user: dict = Depends(get_current_user)):
-    """Elimina un modelo custom: registry + Blob Storage."""
+    """Elimina un modelo custom: registry + training_jobs + Blob Storage."""
     rows = query(
         """SELECT experiment_name, blob_path, user_id
            FROM silver_model_registry
@@ -130,19 +130,23 @@ async def delete_model(name: str, user: dict = Depends(get_current_user)):
         except Exception as e:
             log.warning(f"Error eliminando blob {blob_path}: {e}")
 
-    conn = get_conn()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """UPDATE silver_model_registry
-                   SET is_active = false, updated_at = NOW()
-                   WHERE experiment_name = %s AND user_id = %s""",
-                [name, user["id"]],
-            )
-        conn.commit()
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # Soft-delete from model registry
+                cur.execute(
+                    """UPDATE silver_model_registry
+                       SET is_active = false, updated_at = NOW()
+                       WHERE experiment_name = %s AND user_id = %s""",
+                    [name, user["id"]],
+                )
+                # Remove ALL training_jobs rows for this model name
+                cur.execute(
+                    """DELETE FROM training_jobs
+                       WHERE model_name = %s AND user_id = %s""",
+                    [name, user["id"]],
+                )
     except Exception as e:
-        conn.rollback()
         raise HTTPException(500, f"Error eliminando modelo: {e}") from e
-    finally:
-        conn.close()
+
     return {"deleted": True, "model": name}

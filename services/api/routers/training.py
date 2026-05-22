@@ -59,12 +59,25 @@ def _count_trainings_this_month(user_id: str) -> int:
 
 
 def _count_custom_models(user_id: str) -> int:
+    """Count distinct model names the user has created (sidebar entries)."""
     rows = query(
-        """SELECT COUNT(*) as cnt FROM silver_model_registry
-           WHERE user_id = %s AND is_active = true""",
+        """SELECT COUNT(*) as cnt FROM (
+               SELECT DISTINCT model_name FROM training_jobs
+               WHERE user_id = %s
+           ) sub""",
         [user_id],
     )
     return rows[0]["cnt"] if rows else 0
+
+
+def _model_exists(user_id: str, model_name: str) -> bool:
+    """Check if a model with this name already exists for the user."""
+    rows = query(
+        """SELECT 1 FROM training_jobs
+           WHERE user_id = %s AND model_name = %s LIMIT 1""",
+        [user_id, model_name],
+    )
+    return bool(rows)
 
 
 def _get_extra_trainings(user_id: str) -> int:
@@ -75,7 +88,7 @@ def _get_extra_trainings(user_id: str) -> int:
     return rows[0]["extra_trainings"] if rows else 0
 
 
-def _validate_train(req: TrainRequest, user: dict) -> list[str]:
+def _validate_train(req: TrainRequest, user: dict, *, is_retrain: bool = False) -> list[str]:
     errors = []
     plan = user.get("plan", "trial")
     limits = get_plan_limits(plan)
@@ -116,20 +129,21 @@ def _validate_train(req: TrainRequest, user: dict) -> list[str]:
     except ValueError:
         errors.append("Formato de fecha inválido (usar YYYY-MM-DD)")
 
-    # 5. Trainings/month
+    # 5. Trainings/month (counts both train + retrain)
     used = _count_trainings_this_month(user_id)
     extra = _get_extra_trainings(user_id)
     limit_month = limits["max_trainings_month"] + extra
     if used >= limit_month:
         errors.append(f"Límite de trainings/mes alcanzado ({used}/{limit_month})")
 
-    # 6. Custom models
-    current_models = _count_custom_models(user_id)
-    if current_models >= limits["max_custom_models"]:
-        errors.append(
-            f"Límite de modelos custom alcanzado "
-            f"({current_models}/{limits['max_custom_models']})"
-        )
+    # 6. Custom models — skip if retraining an existing model
+    if not is_retrain:
+        current_models = _count_custom_models(user_id)
+        if current_models >= limits["max_custom_models"]:
+            errors.append(
+                f"Límite de modelos custom alcanzado "
+                f"({current_models}/{limits['max_custom_models']})"
+            )
 
     return errors
 
@@ -173,15 +187,18 @@ def _run_training_sync(req: TrainRequest) -> dict:
 
 @router.post("/train")
 async def train_model(req: TrainRequest, user: dict = Depends(get_active_user)):
-    """Lanza un nuevo entrenamiento con validaciones de plan."""
-    errors = _validate_train(req, user)
+    """Lanza un entrenamiento. Si el modelo ya existe, es un re-train."""
+    user_id = user["id"]
+    is_retrain = _model_exists(user_id, req.name)
+
+    errors = _validate_train(req, user, is_retrain=is_retrain)
     if errors:
         raise HTTPException(422, detail={"errors": errors})
 
-    user_id = user["id"]
     start_time = time.time()
 
-    # Crear training_job
+    # Always INSERT a new training_jobs row (counts toward monthly limit).
+    # The listing endpoint deduplicates by returning only the latest per model_name.
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -189,13 +206,16 @@ async def train_model(req: TrainRequest, user: dict = Depends(get_active_user)):
                     """INSERT INTO training_jobs
                        (user_id, model_name, model_type, ticker, status,
                         train_from, train_to, test_from, test_to,
-                        hyperparameters, started_at)
-                       VALUES (%s,%s,%s,%s,'running',%s,%s,%s,%s,%s,%s)
+                        hyperparameters, columns, context_tickers,
+                        started_at)
+                       VALUES (%s,%s,%s,%s,'running',%s,%s,%s,%s,%s,%s,%s,%s)
                        RETURNING id""",
                     [
                         user_id, req.name, req.model_type, req.ticker,
                         req.train_from, req.train_to, req.test_from, req.test_to,
                         json.dumps(req.hyperparameters),
+                        json.dumps(req.columns or []),
+                        json.dumps(req.context_tickers or []),
                         datetime.now(UTC),
                     ],
                 )
@@ -276,16 +296,37 @@ async def list_training_jobs(
     user: dict = Depends(get_current_user),
     limit: int = Query(20, le=50),
 ):
-    """Lista jobs de training del usuario."""
+    """Lista jobs de training del usuario (solo el más reciente por modelo)."""
+    # Cleanup: mark stale "running" jobs as failed (e.g. page refresh killed request)
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE training_jobs
+                       SET status = 'failed', error = 'Timeout — training interrumpido',
+                           completed_at = NOW()
+                       WHERE user_id = %s AND status = 'running'
+                         AND started_at < NOW() - INTERVAL '15 minutes'""",
+                    [user["id"]],
+                )
+    except Exception as e:
+        log.warning("Error limpiando jobs stale: %s", e)
+
     rows = query(
-        """SELECT id, model_name, model_type, ticker, status,
-                  progress_pct, metrics, error, started_at,
-                  completed_at, created_at
+        """SELECT DISTINCT ON (model_name)
+                  id, model_name, model_type, ticker, status,
+                  progress_pct, metrics, error,
+                  hyperparameters, columns, context_tickers,
+                  train_from, train_to, test_from, test_to,
+                  started_at, completed_at, created_at
            FROM training_jobs WHERE user_id = %s
-           ORDER BY created_at DESC LIMIT %s""",
-        [user["id"], limit],
+           ORDER BY model_name, created_at DESC""",
+        [user["id"]],
     )
-    return {"jobs": rows or []}
+    # Re-sort by created_at DESC for display
+    if rows:
+        rows = sorted(rows, key=lambda r: r.get("created_at", ""), reverse=True)
+    return {"jobs": (rows or [])[:limit]}
 
 
 @router.get("/training/jobs/{job_id}")
@@ -294,6 +335,7 @@ async def get_training_job(job_id: str, user: dict = Depends(get_current_user)):
     rows = query(
         """SELECT id, model_name, model_type, ticker, status,
                   progress_pct, metrics, error, hyperparameters,
+                  columns, context_tickers,
                   train_from, train_to, test_from, test_to,
                   started_at, completed_at, created_at
            FROM training_jobs WHERE id = %s AND user_id = %s""",

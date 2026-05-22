@@ -97,7 +97,7 @@ export default function TrainingPage() {
   const [fTestTo, setFTestTo] = useState("2026-04-24");
   const [fFeatures, setFFeatures] = useState<string[]>(DEFAULT_FEATURES);
   const [fContextTickers, setFContextTickers] = useState<string[]>([]);
-  const [training, setTraining] = useState(false);
+  const [trainingName, setTrainingName] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
 
@@ -112,8 +112,9 @@ export default function TrainingPage() {
   const [ctxResults, setCtxResults] = useState<TickerInfo[]>([]);
   const [ctxDropdownOpen, setCtxDropdownOpen] = useState(false);
 
-  // Ref to prevent date reset after training
-  const skipDateReset = useRef(false);
+
+  // Ref to prevent useEffect from resetting hyperparams when selectJob sets model type
+  const skipHyperReset = useRef(false);
 
   /* ── Data fetch ──────────────────────────────────────────────────────── */
 
@@ -145,6 +146,7 @@ export default function TrainingPage() {
 
   useEffect(() => {
     if (!fModelType || modelTypes.length === 0) return;
+    if (skipHyperReset.current) { skipHyperReset.current = false; return; }
     const mt = modelTypes.find((m) => mtId(m) === fModelType);
     setFHyperparams(defaultHyperparams(mt));
   }, [fModelType, modelTypes]);
@@ -163,18 +165,28 @@ export default function TrainingPage() {
     return () => clearTimeout(timer);
   }, [tickerSearch]);
 
-  /* ── Context ticker search ──────────────────────────────────────────── */
+  /* ── Context ticker search (only tickers with silver data) ──────────── */
+
+  const [silverTickers, setSilverTickers] = useState<TickerInfo[]>([]);
 
   useEffect(() => {
-    if (!ctxSearch || ctxSearch.length < 1) { setCtxResults([]); return; }
-    const timer = setTimeout(async () => {
-      try {
-        const res = await api.get(`/api/tickers/universe?search=${encodeURIComponent(ctxSearch)}&limit=8`);
-        setCtxResults((res.data.tickers || []).filter((t: TickerInfo) => t.ticker !== fTicker && !fContextTickers.includes(t.ticker)));
-      } catch { setCtxResults([]); }
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [ctxSearch, fTicker, fContextTickers]);
+    // Fetch all tickers available in silver_features_1m (small list)
+    api.get("/api/tickers/silver-available?limit=100")
+      .then((res) => setSilverTickers(res.data.tickers || []))
+      .catch(() => setSilverTickers([]));
+  }, []);
+
+  useEffect(() => {
+    // Filter silver tickers by search term, exclude current ticker and already-selected
+    const available = silverTickers.filter(
+      (t) => t.ticker !== fTicker && !fContextTickers.includes(t.ticker)
+    );
+    if (!ctxSearch) { setCtxResults(available); return; }
+    const q = ctxSearch.toUpperCase();
+    setCtxResults(available.filter((t) =>
+      t.ticker.includes(q) || (t.name || "").toUpperCase().includes(q)
+    ));
+  }, [ctxSearch, fTicker, fContextTickers, silverTickers]);
 
   /* ── Derived state ──────────────────────────────────────────────────── */
 
@@ -190,6 +202,7 @@ export default function TrainingPage() {
   const dateMin = clampDateMin(maxDays);
   const modelsRemaining = (usage?.limit_custom_models ?? limits.max_custom_models) - (usage?.custom_models ?? jobs.length);
   const trainingsRemaining = usage?.remaining_month ?? limits.max_trainings_month;
+  const isTrainingThis = trainingName !== null && trainingName === fName;
 
   /* ── Actions ────────────────────────────────────────────────────────── */
 
@@ -203,14 +216,23 @@ export default function TrainingPage() {
     setErrors([]);
     setFName(job.model_name);
     setFTicker(job.ticker);
+    // Skip hyperparams reset from useEffect — we restore job's own hyperparams below
+    skipHyperReset.current = true;
     setFModelType(job.model_type);
-    if (!skipDateReset.current) {
-      setFTrainFrom(job.train_from || fTrainFrom);
-      setFTrainTo(job.train_to || fTrainTo);
-      setFTestFrom(job.test_from || fTestFrom);
-      setFTestTo(job.test_to || fTestTo);
+    // Always restore dates from job
+    setFTrainFrom(job.train_from || fTrainFrom);
+    setFTrainTo(job.train_to || fTrainTo);
+    setFTestFrom(job.test_from || fTestFrom);
+    setFTestTo(job.test_to || fTestTo);
+    // Restore features (columns) — fall back to all if not stored
+    if (job.columns && job.columns.length > 0) {
+      setFFeatures(job.columns);
+    } else {
+      setFFeatures(DEFAULT_FEATURES);
     }
-    skipDateReset.current = false;
+    // Restore context tickers
+    setFContextTickers(job.context_tickers || []);
+    // Restore hyperparameters
     if (job.hyperparameters && typeof job.hyperparameters === "object") {
       const hp: Record<string, number> = {};
       for (const [k, v] of Object.entries(job.hyperparameters)) hp[k] = Number(v);
@@ -221,7 +243,7 @@ export default function TrainingPage() {
   const handleTrain = async () => {
     setErrors([]);
     if (trainingsRemaining <= 0) { showToast("Sin trainings restantes. Compra un pack extra.", "err"); return; }
-    setTraining(true);
+    setTrainingName(fName || `${fModelType}_${fTicker}`);
     try {
       const res = await api.post("/api/train", {
         name: fName || `${fModelType}_${fTicker}_${Date.now()}`,
@@ -236,8 +258,7 @@ export default function TrainingPage() {
         columns: fFeatures,
       }, { timeout: 600_000 });
       showToast(`✓ Training ${res.data.status === "completed" ? "completado" : "lanzado"}`);
-      // Keep dates and auto-select new job
-      skipDateReset.current = true;
+      // Update selectedId to the (possibly new) job row, keep form state intact
       if (res.data.job_id) setSelectedId(res.data.job_id);
       setShowNew(false);
       await fetchData();
@@ -249,7 +270,7 @@ export default function TrainingPage() {
       else if (typeof detail === "string") setErrors([detail]);
       else if (status) setErrors([`Error ${status}: ${axErr.message || "Error del servidor"}`]);
       else setErrors([axErr.message || "Error de conexión al backend"]);
-    } finally { setTraining(false); }
+    } finally { setTrainingName(null); }
   };
 
   const handleDelete = async (jobId: string, modelName: string) => {
@@ -471,10 +492,10 @@ export default function TrainingPage() {
             {/* Train bar + Dates */}
             <div className="glass-card p-4">
               <div className="flex gap-3 items-end flex-wrap">
-                <button onClick={handleTrain} disabled={!daysOk || training || trainingsRemaining <= 0}
+                <button onClick={handleTrain} disabled={!daysOk || isTrainingThis || trainingsRemaining <= 0}
                   className="flex items-center gap-2 text-sm h-9 px-4 rounded-lg font-semibold"
-                  style={{ background: "linear-gradient(135deg, var(--accent-violet), #7c3aed)", color: "white", border: "none", cursor: daysOk && !training && trainingsRemaining > 0 ? "pointer" : "default", opacity: daysOk && !training && trainingsRemaining > 0 ? 1 : 0.5 }}>
-                  {training ? <div className="spin-slow w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" /> : selected?.status === "completed" ? <RefreshCw size={14} /> : <Play size={14} />}
+                  style={{ background: "linear-gradient(135deg, var(--accent-violet), #7c3aed)", color: "white", border: "none", cursor: daysOk && !isTrainingThis && trainingsRemaining > 0 ? "pointer" : "default", opacity: daysOk && !isTrainingThis && trainingsRemaining > 0 ? 1 : 0.5 }}>
+                  {isTrainingThis ? <div className="spin-slow w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" /> : selected?.status === "completed" ? <RefreshCw size={14} /> : <Play size={14} />}
                   {selected?.status === "completed" ? "Re-train" : "Entrenar"}
                 </button>
                 <div><label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Train desde</label><input type="date" value={fTrainFrom} min={dateMin} max={fTrainTo || today} onChange={(e) => setFTrainFrom(e.target.value)} className="input-glass text-xs py-1.5 h-9 w-36" /></div>

@@ -132,6 +132,8 @@ export interface TrainingJob {
   status: string;
   progress_pct: number | null;
   hyperparameters: Record<string, unknown> | null;
+  columns: string[] | null;
+  context_tickers: string[] | null;
   metrics: Record<string, unknown> | null;
   error: string | null;
   train_from: string | null;

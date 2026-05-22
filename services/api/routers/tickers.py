@@ -113,3 +113,38 @@ async def ticker_indicators(
         "data": list(reversed(rows or [])),
         "count": len(rows or []),
     }
+
+
+@router.get("/tickers/silver-available")
+async def tickers_silver_available(
+    search: str | None = Query(None, description="Filtrar por ticker"),
+    limit: int = Query(20, ge=1, le=100),
+    user: dict = Depends(get_current_user),
+):
+    """Tickers que tienen datos en silver_features_1m (disponibles para training)."""
+    conditions = []
+    params: list[Any] = []
+
+    if search:
+        conditions.append("sf.ticker ILIKE %s")
+        params.append(f"%{search}%")
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    rows = query(
+        f"""SELECT sf.ticker,
+                   COALESCE(tu.name, sf.ticker) AS name,
+                   COALESCE(tu.sector, '') AS sector,
+                   COUNT(*) AS row_count,
+                   MIN(sf.ts)::text AS data_from,
+                   MAX(sf.ts)::text AS data_to
+            FROM silver_features_1m sf
+            LEFT JOIN ticker_universe tu ON tu.ticker = sf.ticker
+            {where}
+            GROUP BY sf.ticker, tu.name, tu.sector
+            ORDER BY sf.ticker
+            LIMIT %s""",
+        [*params, limit],
+    )
+
+    return {"tickers": rows or []}
