@@ -5,7 +5,7 @@ import type { NextRequest } from "next/server";
 // Auth protection is handled client-side by the dashboard layout.
 // This middleware only handles basic redirects.
 
-const PUBLIC_PATHS = ["/login", "/register", "/"];
+const PUBLIC_PATHS = ["/login", "/register", "/verify-email", "/"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

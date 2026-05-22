@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Activity, Eye, EyeOff } from "lucide-react";
+import { Activity, Eye, EyeOff, Mail } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
+import api from "@/lib/api";
 import { AxiosError } from "axios";
 
 export default function LoginPage() {
@@ -16,18 +17,48 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Email not verified state
+  const [needsVerify, setNeedsVerify] = useState(false);
+  const [verifyEmail, setVerifyEmail] = useState("");
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setNeedsVerify(false);
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email.toLowerCase(), password);
       router.push("/dashboard");
     } catch (err) {
-      const axErr = err as AxiosError<{ detail?: string }>;
-      setError(axErr.response?.data?.detail || "Error al iniciar sesión");
+      const axErr = err as AxiosError<{ detail?: string | { error?: string; message?: string; email?: string } }>;
+      const detail = axErr.response?.data?.detail;
+
+      if (typeof detail === "object" && detail?.error === "email_not_verified") {
+        setNeedsVerify(true);
+        setVerifyEmail(detail.email || email);
+        setError(detail.message || "Debes confirmar tu email.");
+      } else if (typeof detail === "string") {
+        setError(detail);
+      } else {
+        setError("Error al iniciar sesión");
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setResending(true);
+    try {
+      await api.post("/auth/resend-verify", { email: verifyEmail || email });
+      setResent(true);
+      setTimeout(() => setResent(false), 5000);
+    } catch {
+      /* ignore */
+    } finally {
+      setResending(false);
     }
   };
 
@@ -38,55 +69,60 @@ export default function LoginPage() {
         <div className="flex items-center gap-3 mb-8">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{
-              background:
-                "linear-gradient(135deg, var(--accent-cyan), var(--accent-violet))",
-            }}
+            style={{ background: "linear-gradient(135deg, var(--accent-cyan), var(--accent-violet))" }}
           >
             <Activity size={22} className="text-white" />
           </div>
           <div>
-            <h1
-              className="text-xl font-bold"
-              style={{ color: "var(--text-primary)" }}
-            >
+            <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
               Squawks ML
             </h1>
-            <p
-              className="text-xs"
-              style={{ color: "var(--text-muted)" }}
-            >
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
               ML-powered trading alerts
             </p>
           </div>
         </div>
 
-        <h2
-          className="text-lg font-semibold mb-6"
-          style={{ color: "var(--text-primary)" }}
-        >
+        <h2 className="text-lg font-semibold mb-6" style={{ color: "var(--text-primary)" }}>
           Iniciar sesión
         </h2>
 
         {error && (
           <div
-            className="mb-4 px-4 py-3 rounded-lg text-sm"
+            className="mb-4 px-4 py-3 rounded-lg"
             style={{
-              background: "var(--accent-red-dim)",
-              color: "var(--accent-red)",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
+              background: needsVerify ? "rgba(251, 191, 36, 0.1)" : "var(--accent-red-dim)",
+              color: needsVerify ? "var(--accent-amber)" : "var(--accent-red)",
+              border: `1px solid ${needsVerify ? "rgba(251, 191, 36, 0.2)" : "rgba(239, 68, 68, 0.2)"}`,
             }}
           >
-            {error}
+            <div className="flex items-start gap-2">
+              {needsVerify && <Mail size={16} className="mt-0.5 flex-shrink-0" />}
+              <div className="flex-1">
+                <p className="text-sm">{error}</p>
+                {needsVerify && (
+                  <button
+                    onClick={handleResend}
+                    disabled={resending || resent}
+                    className="mt-2 text-xs font-medium px-3 py-1.5 rounded-md"
+                    style={{
+                      background: resent ? "var(--accent-emerald-dim)" : "rgba(251, 191, 36, 0.15)",
+                      color: resent ? "var(--accent-emerald)" : "var(--accent-amber)",
+                      border: "none",
+                      cursor: resending ? "default" : "pointer",
+                    }}
+                  >
+                    {resending ? "Enviando..." : resent ? "✓ Email reenviado" : "Reenviar email de verificación"}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label
-              className="block text-xs font-medium mb-1.5"
-              style={{ color: "var(--text-secondary)" }}
-            >
+            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
               Email
             </label>
             <input
@@ -101,10 +137,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label
-              className="block text-xs font-medium mb-1.5"
-              style={{ color: "var(--text-secondary)" }}
-            >
+            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
               Contraseña
             </label>
             <div className="relative">
@@ -122,7 +155,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
+                style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -141,16 +174,9 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p
-          className="mt-6 text-center text-sm"
-          style={{ color: "var(--text-muted)" }}
-        >
+        <p className="mt-6 text-center text-sm" style={{ color: "var(--text-muted)" }}>
           ¿No tienes cuenta?{" "}
-          <Link
-            href="/register"
-            className="font-medium"
-            style={{ color: "var(--accent-cyan)" }}
-          >
+          <Link href="/register" className="font-medium" style={{ color: "var(--accent-cyan)" }}>
             Crear cuenta
           </Link>
         </p>
