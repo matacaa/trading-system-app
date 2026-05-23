@@ -178,12 +178,21 @@ def run_backtest_ticker(
         equity_curve: serie temporal [{date, value, trade_direction?}]
     """
     cfg_capital = cfg["capital"]
-    cfg_gr = cfg.get("guardrails", {})
+    cfg_gr = dict(cfg.get("guardrails", {}))
+
+    # ── Backtest mode: hardcodear guardrails de trading ────────────
+    # Horario siempre ON (no tiene sentido backtestear fuera de mercado)
+    cfg_gr["horario_mercado"] = {"activo": True}
+    # Estos son controles de trading en vivo, no aplican a backtest
+    cfg_gr.pop("posicion_abierta", None)
+    cfg_gr.pop("max_posiciones", None)
+    cfg_gr.pop("ordenes_diarias_max", None)
+    cfg_gr.pop("circuit_breaker", None)
 
     capital = cfg_capital["inicial"]
     posicion_max_pct = cfg_capital.get("posicion_max_pct", 10) / 100
-    stop_loss_pct = cfg_capital.get("stop_loss_pct", 5) / 100
-    take_profit_pct = cfg_capital.get("take_profit_pct", 10) / 100
+    stop_loss_pct = cfg_capital.get("stop_loss_pct", 2) / 100
+    take_profit_pct = cfg_capital.get("take_profit_pct", 4) / 100
 
     trades: list[dict] = []
     equity_curve: list[dict] = []

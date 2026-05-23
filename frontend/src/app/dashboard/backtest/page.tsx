@@ -17,6 +17,12 @@ const DIRECTIONAL_GUARDRAILS = new Set([
   "rsi", "macd", "bollinger", "ema_tendencia", "vwap_spread", "sentiment",
 ]);
 
+/* Guardrails ocultos en backtest (trading en vivo) */
+const HIDDEN_GUARDRAILS = new Set([
+  "horario_mercado", "posicion_abierta", "max_posiciones",
+  "ordenes_diarias_max", "circuit_breaker",
+]);
+
 /* Params duales para guardrails direccionales (el DB no los tiene) */
 const DIRECTIONAL_PARAMS: Record<string, { long: Array<{key: string; label: string; default: number; min: number; max: number; step: number}>; short: Array<{key: string; label: string; default: number; min: number; max: number; step: number}> }> = {
   rsi: {
@@ -69,8 +75,11 @@ export default function BacktestPage() {
   const [guardrails, setGuardrails] = useState<Guardrail[]>([]);
   const [customModels, setCustomModels] = useState<CustomModel[]>([]);
   const [modelTypes, setModelTypes] = useState<ModelType[]>([]);
-  const [launching, setLaunching] = useState(false);
+  const [launching, setLaunching] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
+  const [stopLoss, setStopLoss] = useState(2);
+  const [takeProfit, setTakeProfit] = useState(4);
+  const [positionSize, setPositionSize] = useState(10);
 
   // Ticker dropdown
   const [silverTickers, setSilverTickers] = useState<TickerInfo[]>([]);
@@ -169,6 +178,11 @@ export default function BacktestPage() {
     setMlOn(bt.models_enabled !== false);
     setModelWeights((bt.models_config as Record<string, number>) || {});
     setGuardrailsConfig((bt.guardrails_config as Record<string, Record<string, unknown>>) || {});
+    // Load position config from stored config or defaults
+    const cfg = (bt as Record<string, unknown>).config as Record<string, unknown> | undefined;
+    setStopLoss((cfg?.stop_loss_pct as number) || 2);
+    setTakeProfit((cfg?.take_profit_pct as number) || 4);
+    setPositionSize((cfg?.position_size_pct as number) || 10);
   };
 
   const handleAutoWeights = () => {
@@ -206,7 +220,7 @@ export default function BacktestPage() {
     }));
   };
 
-  const handleLaunch = async () => {
+  const handleLaunch = () => {
     setErrors([]);
     const errs: string[] = [];
     if (!fTicker) errs.push("Selecciona un ticker");
@@ -216,30 +230,39 @@ export default function BacktestPage() {
     if (mlOn && Object.keys(modelWeights).length > 0 && Math.abs(totalWeight - 100) > 0.01) errs.push(`Los pesos deben sumar 100% (suman ${totalWeight}%)`);
     if (errs.length > 0) { setErrors(errs); return; }
 
-    setLaunching(true);
-    try {
-      const config: Record<string, boolean | Record<string, unknown>> = {};
-      for (const [k, v] of Object.entries(guardrailsConfig)) {
-        config[k] = v.on !== undefined ? v : { on: true, ...v };
-      }
-      const res = await api.post("/api/backtest", {
-        name: fName || `bt_${fTicker.toLowerCase()}_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`,
-        ticker: fTicker,
-        date_from: fDateFrom,
-        date_to: fDateTo,
-        models_config: mlOn ? modelWeights : {},
-        models_enabled: mlOn,
-        guardrails_config: config,
-      }, { timeout: 600_000 });
+    const btName = fName || `bt_${fTicker.toLowerCase()}_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`;
+    setLaunching(btName);
+
+    const config: Record<string, boolean | Record<string, unknown>> = {};
+    for (const [k, v] of Object.entries(guardrailsConfig)) {
+      config[k] = v.on !== undefined ? v : { on: true, ...v };
+    }
+
+    // Fire in background — no await, user can navigate freely
+    api.post("/api/backtest", {
+      name: btName,
+      ticker: fTicker,
+      date_from: fDateFrom,
+      date_to: fDateTo,
+      models_config: mlOn ? modelWeights : {},
+      models_enabled: mlOn,
+      guardrails_config: config,
+      stop_loss_pct: stopLoss,
+      take_profit_pct: takeProfit,
+      position_size_pct: positionSize,
+    }, { timeout: 600_000 }).then((res) => {
       if (res.data.id) setSelectedId(String(res.data.id));
       setShowNew(false);
-      await fetchData();
-    } catch (err: unknown) {
+      fetchData();
+    }).catch((err: unknown) => {
       const resp = (err as { response?: { data?: { detail?: { errors?: string[] } | string } } }).response?.data?.detail;
       if (typeof resp === "object" && resp?.errors) setErrors(resp.errors);
       else if (typeof resp === "string") setErrors([resp]);
       else setErrors(["Error al lanzar backtest"]);
-    } finally { setLaunching(false); }
+    }).finally(() => {
+      setLaunching(null);
+      fetchData();
+    });
   };
 
   const handleDelete = async (id: string) => {
@@ -314,6 +337,7 @@ export default function BacktestPage() {
                 setErrors([]);
                 if (newShow) {
                   setFName(""); setFTicker("AAPL"); setMlOn(true);
+                  setStopLoss(2); setTakeProfit(4); setPositionSize(10);
                   setModelWeights({}); setGuardrailsConfig({
                     rsi: { on: true, long_max: 35, short_min: 65 },
                     macd: { on: true },
@@ -331,6 +355,13 @@ export default function BacktestPage() {
             </button>
           </div>
         </div>
+
+        {launching && (
+          <div className="px-3 py-2 flex items-center gap-2" style={{ background: "var(--accent-cyan-dim)", borderBottom: "1px solid var(--border-glass)" }}>
+            <div className="spin-slow w-3 h-3 border-2 border-[var(--accent-cyan)] border-t-transparent rounded-full flex-shrink-0" />
+            <span className="text-[0.6rem] truncate" style={{ color: "var(--accent-cyan)" }}>{launching}</span>
+          </div>
+        )}
 
         {showNew && (
           <div className="p-2 space-y-2" style={{ borderBottom: "1px solid var(--border-glass)" }}>
@@ -380,14 +411,17 @@ export default function BacktestPage() {
                     color: selectedId === String(bt.id) ? "var(--text-primary)" : "var(--text-muted)",
                   }}>
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{
-                    background: bt.status === "completed"
-                      ? (bt.pnl_pct != null && bt.pnl_pct >= 0 ? "var(--accent-emerald)" : "var(--accent-red)")
-                      : "var(--text-muted)",
+                    background: launching === bt.name
+                      ? "var(--accent-cyan)"
+                      : bt.status === "completed"
+                        ? (bt.pnl_pct != null && bt.pnl_pct >= 0 ? "var(--accent-emerald)" : "var(--accent-red)")
+                        : "var(--text-muted)",
+                    animation: launching === bt.name ? "pulse 1s infinite" : "none",
                   }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs truncate" style={{ fontWeight: selectedId === String(bt.id) ? 600 : 400 }}>{bt.name}</div>
                     <div className="text-[0.6rem]" style={{ color: "var(--text-muted)" }}>
-                      {bt.pnl_pct != null ? `${bt.pnl_pct >= 0 ? "+" : ""}${bt.pnl_pct.toFixed(1)}%` : bt.status}
+                      {launching === bt.name ? "Ejecutando..." : bt.pnl_pct != null ? `${bt.pnl_pct >= 0 ? "+" : ""}${bt.pnl_pct.toFixed(1)}%` : bt.status}
                       {bt.long_trades != null && bt.short_trades != null && ` · L${bt.long_trades} S${bt.short_trades}`}
                     </div>
                   </div>
@@ -493,10 +527,10 @@ export default function BacktestPage() {
             {/* ── Launch bar + Dates ─────────────────────────────── */}
             <div className="glass-card p-4">
               <div className="flex gap-3 items-end flex-wrap">
-                <button onClick={handleLaunch} disabled={!canLaunch || launching}
+                <button onClick={handleLaunch} disabled={!canLaunch || launching !== null}
                   className="btn-primary flex items-center gap-2 text-sm h-9">
                   {launching ? <div className="spin-slow w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" /> : <Play size={14} />}
-                  {selected?.status === "completed" ? "Re-launch" : "Launch"}
+                  {showNew ? "Lanzar" : "Re-lanzar"}
                 </button>
                 <div>
                   <label className="block text-[0.65rem] mb-1" style={{ color: "var(--text-muted)" }}>Desde</label>
@@ -519,6 +553,52 @@ export default function BacktestPage() {
                 )}
               </div>
               {!weightsOk && <div className="mt-2 text-xs" style={{ color: "var(--accent-red)" }}>Pesos deben sumar 100% (suman {totalWeight}%)</div>}
+            </div>
+
+            {/* ── Gestión de posición ─────────────────────────────── */}
+            <div className="glass-card p-4 space-y-3">
+              <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Gestión de posición</span>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[0.6rem] mb-1.5" style={{ color: "var(--text-muted)" }}>Stop Loss %</label>
+                  <div className="flex items-center gap-2">
+                    <input type="range" min={0.5} max={10} step={0.5} value={stopLoss}
+                      onChange={(e) => setStopLoss(parseFloat(e.target.value))}
+                      className="flex-1" style={{ accentColor: "var(--accent-red)" }} />
+                    <input type="number" value={stopLoss} min={0.5} max={10} step={0.5}
+                      onChange={(e) => setStopLoss(parseFloat(e.target.value) || 2)}
+                      className="w-14 text-center text-xs rounded py-1"
+                      style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--border-glass)", color: "var(--accent-red)" }} />
+                  </div>
+                  <p className="text-[0.55rem] mt-1" style={{ color: "var(--text-muted)" }}>Cierra con pérdida de {stopLoss}%</p>
+                </div>
+                <div>
+                  <label className="block text-[0.6rem] mb-1.5" style={{ color: "var(--text-muted)" }}>Take Profit %</label>
+                  <div className="flex items-center gap-2">
+                    <input type="range" min={0.5} max={20} step={0.5} value={takeProfit}
+                      onChange={(e) => setTakeProfit(parseFloat(e.target.value))}
+                      className="flex-1" style={{ accentColor: "var(--accent-emerald)" }} />
+                    <input type="number" value={takeProfit} min={0.5} max={20} step={0.5}
+                      onChange={(e) => setTakeProfit(parseFloat(e.target.value) || 4)}
+                      className="w-14 text-center text-xs rounded py-1"
+                      style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--border-glass)", color: "var(--accent-emerald)" }} />
+                  </div>
+                  <p className="text-[0.55rem] mt-1" style={{ color: "var(--text-muted)" }}>Cierra con ganancia de {takeProfit}%</p>
+                </div>
+                <div>
+                  <label className="block text-[0.6rem] mb-1.5" style={{ color: "var(--text-muted)" }}>Tamaño posición %</label>
+                  <div className="flex items-center gap-2">
+                    <input type="range" min={1} max={50} step={1} value={positionSize}
+                      onChange={(e) => setPositionSize(parseInt(e.target.value))}
+                      className="flex-1" style={{ accentColor: "var(--accent-cyan)" }} />
+                    <input type="number" value={positionSize} min={1} max={50} step={1}
+                      onChange={(e) => setPositionSize(parseInt(e.target.value) || 10)}
+                      className="w-14 text-center text-xs rounded py-1"
+                      style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--border-glass)", color: "var(--accent-cyan)" }} />
+                  </div>
+                  <p className="text-[0.55rem] mt-1" style={{ color: "var(--text-muted)" }}>{positionSize}% del capital por trade</p>
+                </div>
+              </div>
             </div>
 
             {/* ── Models ─────────────────────────────────────────── */}
@@ -634,7 +714,7 @@ export default function BacktestPage() {
               <div className="glass-card p-4 space-y-3">
                 <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Guardrails</span>
                 {["básico", "técnico", "riesgo"].map((cat) => {
-                  const catGds = guardrails.filter((g) => (g.category || "").toLowerCase() === cat);
+                  const catGds = guardrails.filter((g) => (g.category || "").toLowerCase() === cat && !HIDDEN_GUARDRAILS.has(g.name));
                   if (catGds.length === 0) return null;
                   return (
                     <div key={cat}>

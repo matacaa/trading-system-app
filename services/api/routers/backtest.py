@@ -43,12 +43,14 @@ router = APIRouter()
 class BacktestRequest(BaseModel):
     name: str = ""
     ticker: str = "AAPL"
-    # direction eliminado — ahora siempre evalúa LONG + SHORT
     date_from: str  # YYYY-MM-DD
     date_to: str
     models_config: dict[str, float] = Field(default_factory=dict)
     models_enabled: bool = True
     guardrails_config: dict[str, Any] = Field(default_factory=dict)
+    stop_loss_pct: float = 2.0
+    take_profit_pct: float = 4.0
+    position_size_pct: float = 10.0
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -161,6 +163,13 @@ def _run_backtest_sync(req: BacktestRequest) -> dict:
         test_end=req.date_to,
         modelos=modelos_legacy,
         guardrails=req.guardrails_config,
+        capital={
+            "inicial": 100000,
+            "posicion_max_pct": req.position_size_pct,
+            "stop_loss_pct": req.stop_loss_pct,
+            "take_profit_pct": req.take_profit_pct,
+            "cierre_fin_dia": True,
+        },
     )
     try:
         result = run_pipeline(
@@ -219,7 +228,12 @@ async def run_backtest(req: BacktestRequest, user: dict = Depends(get_active_use
                         json.dumps(req.guardrails_config),
                         json.dumps(req.models_config),
                         req.models_enabled,
-                        json.dumps({"duration": duration}),
+                        json.dumps({
+                            "duration": duration,
+                            "stop_loss_pct": req.stop_loss_pct,
+                            "take_profit_pct": req.take_profit_pct,
+                            "position_size_pct": req.position_size_pct,
+                        }),
                         "completed" if result.get("success") else "failed",
                         datetime.now(UTC),
                     ],

@@ -1,13 +1,93 @@
 "use client";
 
-import { Settings, User, Bell, Shield } from "lucide-react";
+import { useState } from "react";
+import { Settings, User, Bell, Shield, Volume2 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { PLAN_LIMITS } from "@/lib/types";
 
+function playTestNotification() {
+  const ctx = new AudioContext();
+
+  // Tone 1: ascending notification
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  osc1.type = "sine";
+  osc1.frequency.setValueAtTime(587, ctx.currentTime); // D5
+  osc1.frequency.setValueAtTime(784, ctx.currentTime + 0.15); // G5
+  gain1.gain.setValueAtTime(0.3, ctx.currentTime);
+  gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+  osc1.connect(gain1);
+  gain1.connect(ctx.destination);
+  osc1.start(ctx.currentTime);
+  osc1.stop(ctx.currentTime + 0.4);
+
+  // Tone 2: confirmation
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  osc2.type = "sine";
+  osc2.frequency.setValueAtTime(988, ctx.currentTime + 0.2); // B5
+  gain2.gain.setValueAtTime(0.25, ctx.currentTime + 0.2);
+  gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
+  osc2.connect(gain2);
+  gain2.connect(ctx.destination);
+  osc2.start(ctx.currentTime + 0.2);
+  osc2.stop(ctx.currentTime + 0.6);
+
+  // Tone 3: final chime
+  const osc3 = ctx.createOscillator();
+  const gain3 = ctx.createGain();
+  osc3.type = "sine";
+  osc3.frequency.setValueAtTime(1175, ctx.currentTime + 0.35); // D6
+  gain3.gain.setValueAtTime(0.2, ctx.currentTime + 0.35);
+  gain3.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+  osc3.connect(gain3);
+  gain3.connect(ctx.destination);
+  osc3.start(ctx.currentTime + 0.35);
+  osc3.stop(ctx.currentTime + 0.8);
+
+  setTimeout(() => ctx.close(), 1500);
+}
+
+function playTestSquawk() {
+  const utterance = new SpeechSynthesisUtterance(
+    "Squawk alert. AAPL long signal detected. Confidence 72 percent. RSI oversold at 28."
+  );
+  utterance.rate = 1.1;
+  utterance.pitch = 1.0;
+  utterance.volume = 1.0;
+  utterance.lang = "en-US";
+  speechSynthesis.speak(utterance);
+}
+
 export default function SettingsPage() {
-  const { user, preferences } = useAuthStore();
+  const { user } = useAuthStore();
   const plan = user?.plan || "trial";
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.trial;
+  const [audioStatus, setAudioStatus] = useState<"idle" | "ok" | "error">("idle");
+  const [ttsStatus, setTtsStatus] = useState<"idle" | "playing" | "ok" | "error">("idle");
+
+  const handleTestAudio = () => {
+    try {
+      playTestNotification();
+      setAudioStatus("ok");
+      setTimeout(() => setAudioStatus("idle"), 3000);
+    } catch {
+      setAudioStatus("error");
+      setTimeout(() => setAudioStatus("idle"), 3000);
+    }
+  };
+
+  const handleTestTTS = () => {
+    try {
+      setTtsStatus("playing");
+      playTestSquawk();
+      setTimeout(() => { setTtsStatus("ok"); }, 4000);
+      setTimeout(() => { setTtsStatus("idle"); }, 7000);
+    } catch {
+      setTtsStatus("error");
+      setTimeout(() => setTtsStatus("idle"), 3000);
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -41,34 +121,56 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Notifications */}
-      <div className="glass-card p-5 space-y-3">
+      {/* Notifications + Audio Test */}
+      <div className="glass-card p-5 space-y-4">
         <div className="flex items-center gap-2">
           <Bell size={16} style={{ color: "var(--accent-amber)" }} />
           <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Notificaciones</h2>
         </div>
-        {[
-          { label: "Push activadas", on: true },
-          { label: "Solo alta prioridad", on: true },
-          { label: "Sonido", on: false },
-        ].map((item) => (
-          <div key={item.label} className="flex items-center justify-between">
-            <span className="text-sm" style={{ color: "var(--text-primary)" }}>{item.label}</span>
+
+        {/* Audio test section */}
+        <div className="rounded-lg p-4 space-y-3" style={{ background: "rgba(15,23,42,0.5)", border: "1px solid var(--border-glass)" }}>
+          <div className="flex items-center gap-2">
+            <Volume2 size={14} style={{ color: "var(--accent-cyan)" }} />
+            <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>Test de audio</span>
+          </div>
+          <p className="text-[0.7rem]" style={{ color: "var(--text-muted)" }}>
+            Verifica que tu navegador puede reproducir sonidos de alerta y voz TTS para los squawks.
+          </p>
+          <div className="flex gap-3">
             <button
-              className="w-8 h-5 rounded-full relative"
+              onClick={handleTestAudio}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium"
               style={{
-                background: item.on ? "var(--accent-cyan)" : "var(--border-glass-hover)",
-                border: "none",
+                background: audioStatus === "ok" ? "var(--accent-emerald-dim)" : "transparent",
+                border: `1px solid ${audioStatus === "ok" ? "var(--accent-emerald)" : audioStatus === "error" ? "var(--accent-red)" : "var(--border-glass-hover)"}`,
+                color: audioStatus === "ok" ? "var(--accent-emerald)" : audioStatus === "error" ? "var(--accent-red)" : "var(--accent-cyan)",
                 cursor: "pointer",
               }}
             >
-              <div
-                className="w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all duration-150"
-                style={{ left: item.on ? 16 : 2 }}
-              />
+              <Volume2 size={14} />
+              {audioStatus === "ok" ? "✓ Audio OK" : audioStatus === "error" ? "✗ Error" : "Probar sonido"}
+            </button>
+            <button
+              onClick={handleTestTTS}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium"
+              style={{
+                background: ttsStatus === "ok" ? "var(--accent-emerald-dim)" : ttsStatus === "playing" ? "var(--accent-violet-dim)" : "transparent",
+                border: `1px solid ${ttsStatus === "ok" ? "var(--accent-emerald)" : ttsStatus === "error" ? "var(--accent-red)" : ttsStatus === "playing" ? "var(--accent-violet)" : "var(--border-glass-hover)"}`,
+                color: ttsStatus === "ok" ? "var(--accent-emerald)" : ttsStatus === "error" ? "var(--accent-red)" : ttsStatus === "playing" ? "var(--accent-violet)" : "var(--accent-cyan)",
+                cursor: "pointer",
+              }}
+            >
+              {ttsStatus === "playing" && <div className="spin-slow w-3 h-3 border-2 border-[var(--accent-violet)] border-t-transparent rounded-full" />}
+              {ttsStatus === "playing" ? "Reproduciendo..." : ttsStatus === "ok" ? "✓ TTS OK" : ttsStatus === "error" ? "✗ Error TTS" : "Probar squawk TTS"}
             </button>
           </div>
-        ))}
+          {audioStatus === "error" && (
+            <p className="text-[0.65rem]" style={{ color: "var(--accent-red)" }}>
+              Tu navegador bloqueó el audio. Revisa los permisos de sonido en la barra de direcciones.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Plan limits */}
