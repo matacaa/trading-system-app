@@ -69,10 +69,10 @@ def load_models(modelos_cfg: list[dict]) -> list[dict]:
 
             meta = rows[0]
             model_name = meta["model_name"]
-            feature_cols = json.loads(meta["feature_columns"])
-            scaler_params = (
-                json.loads(meta["scaler_params"]) if meta.get("scaler_params") else None
-            )
+            fc = meta["feature_columns"]
+            feature_cols = json.loads(fc) if isinstance(fc, str) else (fc or [])
+            sp = meta.get("scaler_params")
+            scaler_params = json.loads(sp) if isinstance(sp, str) else sp
 
             # ── Resolver file_path ──────────────────────────────────
             file_path = Path(meta["file_path"])

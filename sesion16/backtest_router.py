@@ -167,11 +167,6 @@ def _run_backtest_sync(req: BacktestRequest) -> dict:
             [sys.executable, "-m", "apps.ml_sandbox.backtest", "--config", str(tmp)],
             timeout=600,
         )
-        # DEBUG: ver salida del subprocess
-        if result.get("stdout"):
-            log.info("BACKTEST STDOUT:\n%s", result["stdout"][-3000:])
-        if result.get("stderr"):
-            log.warning("BACKTEST STDERR:\n%s", result["stderr"][-3000:])
         return {"success": result.get("success", False), "backtest_name": bt_name, **result}
     finally:
         tmp.unlink(missing_ok=True)
@@ -233,7 +228,7 @@ async def run_backtest(req: BacktestRequest, user: dict = Depends(get_active_use
     metrics = None
     if result.get("success") and bt_id:
         m_rows = query(
-            """SELECT n_trades AS total_trades, pnl_total, pnl_pct_total AS pnl_pct,
+            """SELECT total_trades, pnl_total, pnl_pct_total AS pnl_pct,
                       win_rate, sharpe_ratio, max_drawdown
                FROM backtest_metrics WHERE backtest_name = %s LIMIT 1""",
             [bt_name],
@@ -364,7 +359,7 @@ async def backtest_usage(user: dict = Depends(get_current_user)):
 async def get_backtest(bt_id: str, user: dict = Depends(get_current_user)):
     """Detalle de un backtest con config + métricas."""
     rows = query(
-        """SELECT br.*, bm.n_trades AS total_trades, bm.pnl_total, bm.pnl_pct_total AS pnl_pct,
+        """SELECT br.*, bm.total_trades, bm.pnl_total, bm.pnl_pct_total AS pnl_pct,
                   bm.win_rate, bm.sharpe_ratio, bm.max_drawdown
            FROM backtest_runs br
            LEFT JOIN backtest_metrics bm ON bm.backtest_name = br.name
@@ -417,64 +412,3 @@ async def delete_backtest(bt_id: str, user: dict = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(500, f"Error eliminando backtest: {e}") from e
     return {"deleted": True, "id": bt_id}
-
-
-@router.get("/backtest/{bt_id}/chart-data")
-async def get_chart_data(bt_id: str, user: dict = Depends(get_current_user)):
-    """Datos de precio + indicadores + trades para la gráfica del backtest."""
-    bt_rows = query(
-        """SELECT name, ticker, date_from, date_to
-           FROM backtest_runs
-           WHERE id = %s AND (user_id = %s OR user_id IS NULL)""",
-        [bt_id, user["id"]],
-    )
-    if not bt_rows:
-        raise HTTPException(404, "Backtest no encontrado")
-
-    bt = bt_rows[0]
-    ticker = bt["ticker"]
-    bt_name = bt["name"]
-    date_from = bt["date_from"]
-    date_to = bt["date_to"]
-
-    # Precio + indicadores de silver_features_1m (downsample cada 15 min)
-    candles = query(
-        """SELECT ts, open, high, low, close,
-                  ema_9, ema_21, ema_50, rsi_14,
-                  macd_line, macd_signal, macd_hist,
-                  bb_pct, atr_14, vwap, volume_norm,
-                  sentiment_score
-           FROM silver_features_1m
-           WHERE ticker = %s AND ts >= %s AND ts < (%s::date + interval '1 day')
-           ORDER BY ts""",
-        [ticker, date_from, date_to],
-    )
-
-    # Downsample: cada 5 min para equilibrar detalle y rendimiento
-    candles_ds = [c for i, c in enumerate(candles or []) if i % 5 == 0]
-
-    # Trades del backtest
-    trades = query(
-        """SELECT ts_entrada, ts_salida, precio_entrada, precio_salida,
-                  side, pnl, pnl_pct, motivo_salida, ejecutada
-           FROM backtest_trades
-           WHERE backtest_name = %s
-           ORDER BY ts_entrada""",
-        [bt_name],
-    )
-
-    # Serializar timestamps
-    for c in candles_ds:
-        if c.get("ts"):
-            c["ts"] = str(c["ts"])
-    for t in (trades or []):
-        if t.get("ts_entrada"):
-            t["ts_entrada"] = str(t["ts_entrada"])
-        if t.get("ts_salida"):
-            t["ts_salida"] = str(t["ts_salida"])
-
-    return {
-        "candles": candles_ds,
-        "trades": trades or [],
-        "ticker": ticker,
-    }

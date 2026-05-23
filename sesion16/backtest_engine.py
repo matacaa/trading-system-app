@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from shared.db import execute, query
+from shared.db import execute, query, upsert
 from shared.guardrails import check_guardrails_for_direction, check_score_for_direction
 from shared.inference import load_models, predict_ensemble
 from shared.utils.logging import setup_logging
@@ -494,6 +494,7 @@ def save_results(
         "capital_final": stats["capital_final"],
         "pnl_total": stats["pnl_total"],
         "pnl_pct_total": stats["pnl_pct_total"],
+        "total_trades": stats["n_trades"],
         "n_trades": stats["n_trades"],
         "n_wins": stats["n_wins"],
         "n_losses": stats["n_losses"],
@@ -514,35 +515,33 @@ def save_results(
         execute("DELETE FROM backtest_trades WHERE backtest_name = %s", [name])
         execute("DELETE FROM backtest_metrics WHERE backtest_name = %s", [name])
 
-        # Paso 2: insertar trades
-        cols = [
-            "backtest_name", "ticker", "ts_entrada", "ts_salida",
-            "precio_entrada", "precio_salida", "side", "qty",
-            "pnl", "pnl_pct", "motivo_salida", "guardrail_motivo", "ejecutada",
-        ]
-        col_list = ", ".join(cols)
-        placeholders = ", ".join(["%s"] * len(cols))
-        insert_sql = f"INSERT INTO backtest_trades ({col_list}) VALUES ({placeholders})"
-
+        # Paso 2: insertar trades en batches
         inserted = 0
-        for tr in trades_rows:
+        failed_batches = 0
+        for i in range(0, len(trades_rows), 100):
+            batch = trades_rows[i : i + 100]
             try:
-                execute(insert_sql, [tr.get(c) for c in cols])
-                inserted += 1
+                upsert("backtest_trades", batch, conflict="backtest_name,ts_entrada,ticker")
+                inserted += len(batch)
             except Exception as e:
-                log.error(f"  Error insertando trade: {e}")
+                failed_batches += 1
+                log.error(f"  Error batch {i // 100 + 1}: {e} ({len(batch)} trades perdidos)")
 
-        log.info(f"  {inserted}/{len(trades_rows)} trades guardados")
+        if failed_batches:
+            log.warning(
+                f"  {failed_batches} batches fallaron. "
+                f"{inserted}/{len(trades_rows)} trades guardados."
+            )
 
         # Paso 3: insertar metrics
         execute(
             """INSERT INTO backtest_metrics
                (backtest_name, capital_final, pnl_total, pnl_pct_total,
-                n_trades, n_wins, n_losses, win_rate,
+                total_trades, n_trades, n_wins, n_losses, win_rate,
                 sharpe_ratio, max_drawdown, guardrail_stats)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             [name, metrics_row["capital_final"], metrics_row["pnl_total"],
-             metrics_row["pnl_pct_total"],
+             metrics_row["pnl_pct_total"], metrics_row["total_trades"],
              metrics_row["n_trades"], metrics_row["n_wins"],
              metrics_row["n_losses"], metrics_row["win_rate"],
              metrics_row["sharpe_ratio"], metrics_row["max_drawdown"],
@@ -570,38 +569,6 @@ def main():
     log.info(f"Iniciando backtest dual-dirección: {name}")
     log.info(f"Periodo: {cfg['data']['test_start']} -> {cfg['data']['test_end']}")
     log.info(f"Tickers: {cfg['data']['tickers']}")
-
-    # ── Auto-detect context tickers from models' feature_columns ──
-    auto_ctx = set(cfg["data"].get("context_tickers", []))
-    for m_cfg in cfg.get("modelos", []):
-        if not m_cfg.get("activo", True):
-            continue
-        exp_name = m_cfg["experiment_name"]
-        try:
-            rows = query(
-                """SELECT feature_columns FROM silver_model_registry
-                   WHERE experiment_name = %s AND is_active = true
-                   AND status = 'complete' LIMIT 1""",
-                [exp_name],
-            )
-            if rows:
-                fc = rows[0]["feature_columns"]
-                feat_cols = json.loads(fc) if isinstance(fc, str) else (fc or [])
-                for col in feat_cols:
-                    parts = col.split("_", 1)
-                    # Context ticker prefix: >=2 chars, all uppercase (e.g. CPER_ema_21)
-                    if len(parts) == 2 and parts[0].isupper() and len(parts[0]) >= 2:
-                        auto_ctx.add(parts[0])
-        except Exception as e:
-            log.warning(f"  Error leyendo features de {exp_name}: {e}")
-
-    # Exclude the main tickers from context (no need to load AAPL as context for AAPL)
-    main_tickers = set(cfg["data"]["tickers"])
-    auto_ctx -= main_tickers
-
-    if auto_ctx:
-        cfg["data"]["context_tickers"] = sorted(auto_ctx)
-        log.info(f"Auto-detected context tickers: {cfg['data']['context_tickers']}")
 
     log.info("Cargando datos silver...")
     df = load_silver(cfg)

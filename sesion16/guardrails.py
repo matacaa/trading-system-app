@@ -296,13 +296,13 @@ def check_score_for_direction(
 
     if direction == "long":
         # LONG: score (P(subida)) debe ser alto
-        threshold = gr.get("long_min", gr.get("valor", 55))
+        threshold = gr.get("long_min", gr.get("valor", 60))
         if score < threshold:
             return False, f"score_long ({score:.1f} < {threshold})"
     else:
         # SHORT: score (P(subida)) debe ser bajo → P(bajada) alta
         # Convertimos: confianza_bajada = 100 - score
-        threshold = gr.get("short_min", gr.get("valor", 55))
+        threshold = gr.get("short_min", gr.get("valor", 60))
         confianza_bajada = 100 - score
         if confianza_bajada < threshold:
             return False, f"score_short (conf_bajada {confianza_bajada:.1f} < {threshold})"

@@ -6,7 +6,7 @@ import api from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { PLAN_LIMITS, PLAN_HIST_LABEL } from "@/lib/types";
 import type { Backtest, BacktestUsage, Guardrail, CustomModel, TickerInfo, ModelType } from "@/lib/types";
-import BacktestChart from "@/components/backtest-chart";
+import EquityCurve from "@/components/equity-curve";
 
 function mtId(m: ModelType): string { return m.type_id || m.name || ""; }
 function fmtDate(d: Date): string { return d.toISOString().slice(0, 10); }
@@ -41,8 +41,8 @@ const DIRECTIONAL_PARAMS: Record<string, { long: Array<{key: string; label: stri
 
 /* Params para score mínimo (POST guardrail) — siempre dual */
 const SCORE_PARAMS = {
-  long:  { key: "long_min", label: "Confianza LONG", default: 55, min: 0, max: 100, step: 1 },
-  short: { key: "short_min", label: "Confianza SHORT", default: 55, min: 0, max: 100, step: 1 },
+  long:  { key: "long_min", label: "Confianza LONG", default: 60, min: 0, max: 100, step: 1 },
+  short: { key: "short_min", label: "Confianza SHORT", default: 60, min: 0, max: 100, step: 1 },
 };
 
 /* ── Component ────────────────────────────────────────────────────────── */
@@ -314,12 +314,7 @@ export default function BacktestPage() {
                 setErrors([]);
                 if (newShow) {
                   setFName(""); setFTicker("AAPL"); setMlOn(true);
-                  setModelWeights({}); setGuardrailsConfig({
-                    rsi: { on: true, long_max: 35, short_min: 65 },
-                    macd: { on: true },
-                    ema_tendencia: { on: true },
-                    score_minimo: { on: true, long_min: 55, short_min: 55 },
-                  });
+                  setModelWeights({}); setGuardrailsConfig({});
                   const match = silverTickers.find((t) => t.ticker === "AAPL");
                   setFDateFrom(match?.data_from?.slice(0, 10) || "");
                   setFDateTo(match?.data_to?.slice(0, 10) || "");
@@ -440,7 +435,7 @@ export default function BacktestPage() {
             {/* ── Métricas — Total + por dirección ───────────────── */}
             <div className="grid grid-cols-5 gap-3">
               {[
-                { label: "Win Rate", value: selected?.win_rate != null ? `${Number(selected.win_rate).toFixed(1)}%` : "—", color: selected?.win_rate != null && selected.win_rate > 55 ? "var(--accent-emerald)" : undefined },
+                { label: "Win Rate", value: selected?.win_rate != null ? `${(selected.win_rate * 100).toFixed(1)}%` : "—", color: selected?.win_rate != null && selected.win_rate > 0.55 ? "var(--accent-emerald)" : undefined },
                 { label: "Trades", value: selected?.total_trades ?? "—" },
                 { label: "PnL Total", value: selected?.pnl_pct != null ? `${selected.pnl_pct >= 0 ? "+" : ""}${selected.pnl_pct.toFixed(1)}%` : "—", color: selected?.pnl_pct != null && selected.pnl_pct >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" },
                 { label: "Sharpe", value: selected?.sharpe_ratio?.toFixed(2) ?? "—" },
@@ -483,10 +478,11 @@ export default function BacktestPage() {
               </div>
             )}
 
-            {/* ── Price Chart + Signals ─────────────────────────── */}
+            {/* ── Equity Curve ────────────────────────────────────── */}
             <div className="glass-card p-4">
-              {selected?.id ? <BacktestChart backtestId={selected.id} /> : (
-                <div className="flex items-center justify-center h-48 text-xs" style={{ color: "var(--text-muted)" }}>Lanza un backtest para ver la gráfica</div>
+              <p className="text-[0.65rem] uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Equity Curve</p>
+              {selected?.id ? <EquityCurve backtestId={selected.id} /> : (
+                <div className="flex items-center justify-center h-48 text-xs" style={{ color: "var(--text-muted)" }}>Lanza un backtest para ver la equity curve</div>
               )}
             </div>
 
