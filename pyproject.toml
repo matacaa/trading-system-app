@@ -40,6 +40,9 @@ dependencies = [
     # ─── Broker ────────────────────────────────────
     "alpaca-py>=0.20",
 
+    # ─── Pagos ─────────────────────────────────────
+    "stripe>=8.0",
+
     # ─── ML tabulares ──────────────────────────────
     "scikit-learn>=1.4",
     "xgboost>=2.0",
@@ -67,12 +70,6 @@ dev = [
     "pytest-cov>=4.1",
     "ruff>=0.2",
     "mypy>=1.8",
-]
-
-dashboard = [
-    "streamlit>=1.30",
-    "plotly>=5.18",
-    "streamlit-aggrid>=0.3",
 ]
 
 notebooks = [
