@@ -1,7 +1,7 @@
 """
 shared/legacy_runners.py
 ────────────────────────
-Funciones extraídas de apps/api/main.py (legacy).
+Helpers legacy de backtest/training (extraídos del antiguo monolito de API).
 
 Estas funciones generan YAMLs temporales y ejecutan pipelines
 via subprocess. Se mantienen para compatibilidad hasta que los
